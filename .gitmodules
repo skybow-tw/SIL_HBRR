@@ -1,0 +1,6 @@
+[submodule "includes/Driver_SPI_RPiOS"]
+	path = includes/Driver_SPI_RPiOS
+	url = git@github.com:skybow-tw/Driver_SPI_RPiOS.git
+[submodule "includes/ADS131A0X"]
+	path = includes/ADS131A0X
+	url = git@github.com:skybow-tw/ADS131A0X.git
