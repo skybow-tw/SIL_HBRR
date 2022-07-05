@@ -133,13 +133,6 @@ void myInterrupt0(int gpio, int level, uint32_t tick)
 // /=================================================================================
 int main()
 {
-  /*
-  //wiringPi.h intializing
-  if (wiringPiSetup() == -1)
-    printf("GPIO Initilization fail! \n");
-  else
-    printf("GPIO Initilization OK! \n");
-  */
 
   time_t t1 = time(NULL);
   struct tm *nPtr = localtime(&t1);
