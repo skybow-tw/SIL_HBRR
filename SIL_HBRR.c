@@ -243,20 +243,18 @@ int main()
   {
     DFT_I_Re[index_freq] = 0;
     DFT_I_Im[index_freq] = 0;
-    // a = 0;
-    // b = to_sin;
+
     for (index_data = 0; index_data < SIZE_DATA; ++index_data)
     {
       index_W = index_freq * index_data;
 
       DFT_I_Re[index_freq] += Volt_I[index_data] * W[index_W % SIZE_DATA];
       DFT_I_Im[index_freq] -= Volt_I[index_data] * W[(index_W + Offset_CosToSin) % SIZE_DATA];
-      // a += index_freq;
-      // b += index_freq;
     }
-    // PwrSpctm_I[index_freq] = DFT_I_Re[index_freq] * DFT_I_Re[index_freq] + DFT_I_Im[index_freq] * DFT_I_Im[index_freq];
+    PwrSpctm_I[index_freq] = DFT_I_Re[index_freq] * DFT_I_Re[index_freq] + DFT_I_Im[index_freq] * DFT_I_Im[index_freq];
 
-    fprintf(pFile_ADC, "%d,%6.3f\n", index_freq, DFT_I_Re[index_freq]);
+    // fprintf(pFile_ADC, "%d,%6.3f\n", index_freq, DFT_I_Re[index_freq]);
+    fprintf(pFile_ADC, "%d,%6.3f\n", index_freq, PwrSpctm_I[index_freq]);
   }
 
   return 0;
@@ -298,9 +296,6 @@ int main()
         isBufferAvailable = 0; //Simulation,trigger only one time!
 
         //Initialize GPIO_0 with interrupt
-        wiringPiISR(0, INT_EDGE_FALLING, myInterrupt0);
-
-
         break;
 
       case 'E':
