@@ -62,12 +62,11 @@ int status = gpioInitialise();
 #define SIZE_SERIAL_BUFFER 10
 
 //======DFT parameters====
-#define SIZE_DATA 32768
+#define SIZE_DATA 4096
 #define TwoPI 6.2832
 
 int index_data;
-// double TwoPI = 6.283185307;
-double Twiddle_Factor[SIZE_DATA];
+double W[SIZE_DATA]; // Twiddle Factor array
 double Volt_I[SIZE_DATA], Volt_Q[SIZE_DATA];
 double DFT_I_Re[SIZE_DATA / 2 + 1], DFT_I_Im[SIZE_DATA / 2 + 1];
 double PwrSpctm_I[SIZE_DATA / 2 + 1];
@@ -99,29 +98,7 @@ char SIL_rawdata_filename[64] = {};
 //===============General purpose Functions Declaration====================
 void BufferClean(char *);
 
-//================ISR for WiringPi=======================
-
-/*
-void myInterrupt0(void)
-{
-  ADS131A0x_GetADCData(1, aData_ADC); //Mode1= Real ADC
-
-  printf("%d,", ++countDataAcq); //To be replaced by RPi serial library
-
-  printf("%6.3f,%6.3f \n", aData_ADC[1], aData_ADC[2]);
-
-  // sprintf(arySerialOutMsg, "ADC2=%6.3f,ADC3=%6.3f \n", aData_ADC[1], aData_ADC[2]);
-  // printf(arySerialOutMsg); //To be replaced by RPi serial library
-}
-
-void myInterrupt1(void)
-{
-  printf("GPIO_1 FallingEdge detected ! \n");
-}
-*/
-//==============
 //================ISR for pigpio=======================
-
 void myInterrupt0(int gpio, int level, uint32_t tick)
 {
   // This function would be called both on Rising or Falling Edge
@@ -234,12 +211,13 @@ int main()
   while (countDataAcq < SIZE_DATA)
   {
   }
+  printf("Stop Data Acquiring!\n ===================\n");
 
   //==================
-  // Generate Twiddle Fctor array
+  // Generate Twiddle Factor array
   for (index_data = 0; index_data < SIZE_DATA; ++index_data)
   {
-    Twiddle_Factor[index_data] = cos(index_data * TwoPI / SIZE_DATA);
+    W[index_data] = cos(index_data * TwoPI / SIZE_DATA);
   }
 
   //====
@@ -253,12 +231,13 @@ int main()
   //
 
   //---for Real Part (COS(Theta))
-  int order_W;
+  int index_W;
   //---for Imaginary Part 's offset (SIN(Theta)), because COS(Theta+3*PI/2)=SIN(Theta);
-  // On the unit circle of COS(Theta) value, just fo forward counterclockwise (offset) 3*PI/2,
+  // On the unit circle of COS(Theta) value, just go forward counterclockwise (offset) 3*PI/2,
   // you will get the value for SIN(Theta)
-  // So, if 2PI radian->N points, then 3*PI/2 radian=>3N/4 points
-  int Order_offset = 3 * SIZE_DATA / 4;
+  // So, if 2PI->N points, then (3/2)*PI->3N/4 points
+
+  int Offset_CosToSin = 3 * SIZE_DATA / 4;
 
   for (index_freq = 0; index_freq <= SIZE_DATA / 2; ++index_freq)
   {
@@ -268,16 +247,16 @@ int main()
     // b = to_sin;
     for (index_data = 0; index_data < SIZE_DATA; ++index_data)
     {
-      order_W = index_freq * index_data;
+      index_W = index_freq * index_data;
 
-      DFT_I_Re[index_freq] += Volt_I[index_data] * Twiddle_Factor[order_W % SIZE_DATA];
-      // DFT_I_Im[index_freq] -= Volt_I[index_data] * Twiddle_Factor[(order_W+to_sin) % SIZE_DATA];
+      DFT_I_Re[index_freq] += Volt_I[index_data] * W[index_W % SIZE_DATA];
+      DFT_I_Im[index_freq] -= Volt_I[index_data] * W[(index_W + Offset_CosToSin) % SIZE_DATA];
       // a += index_freq;
       // b += index_freq;
     }
     // PwrSpctm_I[index_freq] = DFT_I_Re[index_freq] * DFT_I_Re[index_freq] + DFT_I_Im[index_freq] * DFT_I_Im[index_freq];
 
-    fprintf(pFile_ADC, "%d,%6.3f", index_freq, DFT_I_Re[index_freq]);
+    fprintf(pFile_ADC, "%d,%6.3f\n", index_freq, DFT_I_Re[index_freq]);
   }
 
   return 0;
