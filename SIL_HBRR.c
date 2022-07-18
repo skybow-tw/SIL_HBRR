@@ -62,7 +62,7 @@ int status = gpioInitialise();
 #define SIZE_SERIAL_BUFFER 10
 
 //======DFT parameters====
-#define SIZE_DATA 4096
+#define SIZE_DATA 1024
 #define TwoPI 6.2832
 
 int index_data;
@@ -99,10 +99,13 @@ char SIL_rawdata_filename[64] = {};
 void BufferClean(char *);
 
 //================ISR for pigpio=======================
+// NOTE: when RPi GPIO#0 detect Falling Edge, it would trigger ISR,
+// that is, calling "myInterrupt0" function ,and pass 3 parameters to it (gpio,level,tick)
+
 void myInterrupt0(int gpio, int level, uint32_t tick)
 {
-  // This function would be called both on Rising or Falling Edge
-  //  printf("GPIO0_Change Detected:%d\n,", ++countDataAcq); //To be replaced by RPi serial library
+  // This function would be called on both Rising or Falling Edge,
+  // but it would receive "level" parameter indicating the edge type(0=Falling ,1=Rising)
 
   // level=0 means Falling Edge
   if (level == 0)
@@ -168,18 +171,6 @@ int main()
   printf("Start Data Acquiring!\n ===================\n");
 
   // Initialize GPIO_0 with interrupt
-  //  wiringPiISR(0, INT_EDGE_FALLING, myInterrupt0);
-
-  // NOTE!! pigpio ISR use BCM2835 pin number!!!
-  // Initialize GPIO_0(BCM #17) with interrupt
-  // GPIO_0=Connector_#11=BCM_#17
-  // GPIO_1=Connector_#12=BCM_#18
-  // GPIO_2=Connector_#13=BCM_#27
-  // GPIO_3=Connector_#15=BCM_#22
-  // GPIO_4=Connector_#16=BCM_#23
-  // GPIO_5=Connector_#18=BCM_#24
-  // GPIO_6=Connector_#22=BCM_#25
-  // GPIO_7=Connector_#07=BCM_#04
   status_ISR_Register = gpioSetISRFunc(17, FALLING_EDGE, 0, myInterrupt0);
   if (status_ISR_Register == 0)
   {
@@ -203,14 +194,22 @@ int main()
       printf("error!\n");
     }
   }
-
-  // Initialize GPIO_1 with interrupt=>test only
-  //  wiringPiISR(1, INT_EDGE_FALLING, myInterrupt1);
+  // NOTE!! pigpio ISR use BCM2835 pin number!!!
+  // Initialize GPIO_0(BCM #17) with interrupt
+  // GPIO_0=Connector_#11=BCM_#17
+  // GPIO_1=Connector_#12=BCM_#18
+  // GPIO_2=Connector_#13=BCM_#27
+  // GPIO_3=Connector_#15=BCM_#22
+  // GPIO_4=Connector_#16=BCM_#23
+  // GPIO_5=Connector_#18=BCM_#24
+  // GPIO_6=Connector_#22=BCM_#25
+  // GPIO_7=Connector_#07=BCM_#04
 
   // This should be change to infinite loop, such as while(1){}
   while (countDataAcq < SIZE_DATA)
   {
   }
+  gpioSetISRFunc(17, FALLING_EDGE, 0, NULL);
   printf("Stop Data Acquiring!\n ===================\n");
 
   //==================
