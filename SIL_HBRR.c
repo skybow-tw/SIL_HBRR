@@ -62,10 +62,12 @@ int status = gpioInitialise();
 #define SIZE_SERIAL_BUFFER 10
 
 //======DFT parameters====
-#define SIZE_DATA 1024
+#define SIZE_DATA 4096
 #define TwoPI 6.2832
 
 int index_data;
+float fs = 500.0; // smapling rate
+float freq_resolution, freq_bin;
 double W[SIZE_DATA]; // Twiddle Factor array
 double Volt_I[SIZE_DATA], Volt_Q[SIZE_DATA];
 double DFT_I_Re[SIZE_DATA / 2 + 1], DFT_I_Im[SIZE_DATA / 2 + 1];
@@ -93,8 +95,9 @@ uint8_t Status_SerialOut; // Flag to start reading (Status_SerialOut:1=>output o
 uint8_t Size_Serial;
 
 float aData_ADC[4] = {0};
-FILE *pFile_ADC;
-char SIL_rawdata_filename[64] = {};
+FILE *pFile_ADC, *pFile_DFT;
+char strAry_filename_rawdata[64] = {};
+char strary_filename_DFT[64] = {};
 //===============General purpose Functions Declaration====================
 void BufferClean(char *);
 
@@ -110,9 +113,9 @@ void myInterrupt0(int gpio, int level, uint32_t tick)
   // level=0 means Falling Edge
   if (level == 0)
   {
-    ADS131A0x_GetADCData(1, aData_ADC); // Mode1= Real ADC
-    Volt_I[countDataAcq] = aData_ADC[1];
-    Volt_Q[countDataAcq] = aData_ADC[2];
+    ADS131A0x_GetADCData(1, aData_ADC);  // Mode1= Real ADC
+    Volt_I[countDataAcq] = aData_ADC[1]; // channel 2
+    Volt_Q[countDataAcq] = aData_ADC[2]; // channel 3
 
     countDataAcq++;
 
@@ -133,17 +136,47 @@ void myInterrupt0(int gpio, int level, uint32_t tick)
 int main()
 {
 
+  /*
+  Using "time.h"  to get current time and apply to datalog filename!
+  3 functions and 2 data type are used here.
+
+  NOTE: time_t"calendar time"-> struct tm "structure time data " -> formatted time string
+
+  Function "time_t time(time_t *timer)":
+  return current calendar time.
+
+  Function "struct tm *localtime(const time_t *timer)":
+  convert the "calendar time" to "tm" type which is expressed in the local time zone.
+
+  Function "size_t strftime(char *str, size_t maxsize, const char *format, const struct tm *timeptr)":
+  formats the time represented in the structure "timeptr"
+  according to the formatting rules defined in "format" and stored into "str".
+
+  NOTE: "time_t" is a type suitable for storing the calendar time.
+  NOTE: "tm" is a structure used to hold the time and date.
+
+
+  */
+
+  //  Declare a "time_t" type variable
   time_t t1 = time(NULL);
+
+  // Declare a "struct tm" type variable
   struct tm *nPtr = localtime(&t1);
-  // char now[30];
 
-  // strftime(now, 30, "%Y %B %d %A", nPtr);
-  strftime(SIL_rawdata_filename, 64, "rawdata_%Y_%m%d_%H%M%S", nPtr);
-  // printf("%s\n", now);
-  strcat(SIL_rawdata_filename, ".csv");
+  // Format tm type to string literal
+  strftime(strAry_filename_rawdata, 64, "%Y_%m%d_%H%M%S_rawdata_", nPtr);
+  strftime(strary_filename_DFT, 64, "%Y_%m%d_%H%M%S_DFT", nPtr);
 
-  pFile_ADC = fopen(SIL_rawdata_filename, "w");
-  // pFile_ADC = fopen("2022_0630_1333.csv", "w");
+  // concatenate filename string with .csv
+  strcat(strAry_filename_rawdata, ".csv");
+  strcat(strary_filename_DFT, ".csv");
+
+  pFile_ADC = fopen(strAry_filename_rawdata, "w");
+  pFile_DFT = fopen(strary_filename_DFT, "w");
+
+  // set DFT frequency resolution
+  freq_resolution = fs / (float)SIZE_DATA;
 
   // pigpio.h initializing Function
   if (gpioInitialise() < 0)
@@ -211,6 +244,7 @@ int main()
   }
   gpioSetISRFunc(17, FALLING_EDGE, 0, NULL);
   printf("Stop Data Acquiring!\n ===================\n");
+  // fprintf(pFile_ADC, "%6.3f,%6.3f \n", aData_ADC[1], aData_ADC[2]);
 
   //==================
   // Generate Twiddle Factor array
@@ -253,8 +287,11 @@ int main()
     PwrSpctm_I[index_freq] = DFT_I_Re[index_freq] * DFT_I_Re[index_freq] + DFT_I_Im[index_freq] * DFT_I_Im[index_freq];
 
     // fprintf(pFile_ADC, "%d,%6.3f\n", index_freq, DFT_I_Re[index_freq]);
-    fprintf(pFile_ADC, "%d,%6.3f\n", index_freq, PwrSpctm_I[index_freq]);
+    freq_bin = freq_resolution * (float)index_freq;
+    fprintf(pFile_DFT, "%d,%6.3f,%6.3f\n", index_freq, freq_bin, PwrSpctm_I[index_freq]);
   }
+  fclose(pFile_ADC);
+  fclose(pFile_DFT);
 
   return 0;
 
@@ -336,8 +373,6 @@ int main()
     countWhileLoop++;
     // printf("Loop:%d\n", countWhileLoop);
   }*/
-
-  return 0;
 }
 
 //-------------------------------------------------------
