@@ -227,22 +227,28 @@ int main()
       printf("error!\n");
     }
   }
-  // NOTE!! pigpio ISR use BCM2835 pin number!!!
-  // Initialize GPIO_0(BCM #17) with interrupt
-  // GPIO_0=Connector_#11=BCM_#17
-  // GPIO_1=Connector_#12=BCM_#18
-  // GPIO_2=Connector_#13=BCM_#27
-  // GPIO_3=Connector_#15=BCM_#22
-  // GPIO_4=Connector_#16=BCM_#23
-  // GPIO_5=Connector_#18=BCM_#24
-  // GPIO_6=Connector_#22=BCM_#25
-  // GPIO_7=Connector_#07=BCM_#04
+  /*
+  NOTE: pigpio ISR use BCM2835 pin number!!!
+  Initialize GPIO_0(BCM #17) with interrupt
+  GPIO_0=Connector_#11=BCM_#17
+  GPIO_1=Connector_#12=BCM_#18
+  GPIO_2=Connector_#13=BCM_#27
+  GPIO_3=Connector_#15=BCM_#22
+  GPIO_4=Connector_#16=BCM_#23
+  GPIO_5=Connector_#18=BCM_#24
+  GPIO_6=Connector_#22=BCM_#25
+  GPIO_7=Connector_#07=BCM_#04
+  */
 
   // This should be change to infinite loop, such as while(1){}
   while (countDataAcq < SIZE_DATA)
   {
+    // Continuously detect GPIO interruption until gathering SIZE_DATA points data from ADC.
   }
+
+  // Disable GPIO interruption through calling  "gpioSetISRFunc" function again by passing a NULL function pointer
   gpioSetISRFunc(17, FALLING_EDGE, 0, NULL);
+
   printf("Stop Data Acquiring!\n ===================\n");
   // fprintf(pFile_ADC, "%6.3f,%6.3f \n", aData_ADC[1], aData_ADC[2]);
 
