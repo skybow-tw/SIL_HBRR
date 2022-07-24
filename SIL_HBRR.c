@@ -14,8 +14,8 @@
 #define TwoPI 6.2832
 
 int index_data;
-float fs = 500.0; // smapling rate
-float freq_resolution, freq_bin;
+double fs = 500.0; // smapling rate
+double freq_resolution, freq_bin;
 double W[SIZE_DATA]; // Twiddle Factor array
 double Volt_I[SIZE_DATA], Volt_Q[SIZE_DATA];
 double DFT_I_Re[SIZE_DATA / 2 + 1], DFT_I_Im[SIZE_DATA / 2 + 1];
@@ -29,6 +29,7 @@ int status_ISR_Register;
 //===============General purpose parameters===============
 char DataIn[SIZE_SERIAL_BUFFER]; // Serial in data buffer;
 char arySerialOutMsg[100] = {0}; // Traditional C char array for serial communication about ADS131A04 SysCmd
+double START, END;               // for calculating processing time
 
 // loop count
 uint8_t isBufferAvailable = 0;
@@ -48,6 +49,7 @@ char strAry_filename_rawdata[64] = {};
 char strary_filename_DFT[64] = {};
 //===============General purpose Functions Declaration====================
 void BufferClean(char *);
+int compare_double(const void *arg1, const void *arg2);
 
 //================ISR for pigpio=======================
 // NOTE: when RPi GPIO#0 detect Falling Edge, it would trigger ISR,
@@ -81,10 +83,8 @@ void myInterrupt0(int gpio, int level, uint32_t tick)
 }
 
 // /=================================================================================
-int main()
+int main(int argc, char *argv[])
 {
-
-  
 
   //  Declare a "time_t" type variable
   time_t t1 = time(NULL);
@@ -104,7 +104,7 @@ int main()
   pFile_DFT = fopen(strary_filename_DFT, "w");
 
   // set DFT frequency resolution
-  freq_resolution = fs / (float)SIZE_DATA;
+  freq_resolution = fs / (double)SIZE_DATA;
 
   // pigpio.h initializing Function
   if (gpioInitialise() < 0)
@@ -131,7 +131,7 @@ int main()
 
   printf("Start Data Acquiring!\n ===================\n");
 
-  // Initialize GPIO_0 with interrupt
+  // Enable interruption at GPIO_0
   status_ISR_Register = gpioSetISRFunc(17, FALLING_EDGE, 0, myInterrupt0);
   if (status_ISR_Register == 0)
   {
@@ -174,18 +174,24 @@ int main()
     // Continuously detect GPIO interruption until gathering SIZE_DATA points data from ADC.
   }
 
-  // Disable GPIO interruption through calling  "gpioSetISRFunc" function again by passing a NULL function pointer
+  // Disable interruption at GPIO_0 through calling  "gpioSetISRFunc" function again by passing a NULL function pointer
   gpioSetISRFunc(17, FALLING_EDGE, 0, NULL);
 
   printf("Stop Data Acquiring!\n ===================\n");
+  START = clock();
   // fprintf(pFile_ADC, "%6.3f,%6.3f \n", aData_ADC[1], aData_ADC[2]);
 
   //==================
   // Generate Twiddle Factor array
+  printf("Generating %dth-order W...\n", SIZE_DATA);
+
   for (index_data = 0; index_data < SIZE_DATA; ++index_data)
   {
     W[index_data] = cos(index_data * TwoPI / SIZE_DATA);
   }
+
+  END = clock();
+  printf(" It costs %f s. \n", (END - START) / CLOCKS_PER_SEC);
 
   //====
   // Calculta DFT
@@ -206,6 +212,10 @@ int main()
 
   int Offset_CosToSin = 3 * SIZE_DATA / 4;
 
+  // calculate processing time
+  printf("Starting DFT with %d th order...\n", SIZE_DATA);
+  START = clock();
+
   for (index_freq = 0; index_freq <= SIZE_DATA / 2; ++index_freq)
   {
     DFT_I_Re[index_freq] = 0;
@@ -220,12 +230,20 @@ int main()
     }
     PwrSpctm_I[index_freq] = DFT_I_Re[index_freq] * DFT_I_Re[index_freq] + DFT_I_Im[index_freq] * DFT_I_Im[index_freq];
 
-    // fprintf(pFile_ADC, "%d,%6.3f\n", index_freq, DFT_I_Re[index_freq]);
-    freq_bin = freq_resolution * (float)index_freq;
-    fprintf(pFile_DFT, "%d,%6.3f,%6.3f\n", index_freq, freq_bin, PwrSpctm_I[index_freq]);
+    freq_bin = freq_resolution * (double)index_freq;
+    fprintf(pFile_DFT, "%d,%6.4f,%6.3f\n", index_freq, freq_bin, PwrSpctm_I[index_freq]);
   }
+
   fclose(pFile_ADC);
   fclose(pFile_DFT);
+
+  END = clock();
+  printf("Complete! It costs %f seconds! \n", (END - START) / CLOCKS_PER_SEC);
+
+  // Quick sort the power spectrum array
+  // qsort(PwrSpctm_I, SIZE_DATA, sizeof(double), compare_double);
+
+  // printf("MAX freq value is %6.4f \n", PwrSpctm_I[SIZE_DATA - 1]);
 
   return 0;
 
@@ -319,4 +337,32 @@ void BufferClean(char *CharArray)
     // can't use sizeof?
     CharArray[i] = 0;
   }
+}
+
+int compare_double(const void *arg1, const void *arg2)
+{
+  // double ret = *(double *)(arg1) - *(double *)(arg2);
+  // if (ret > 0)
+  //   return 1;
+  // if (ret < 0)
+  //   return -1;
+  return (*(double *)(arg1) - *(double *)(arg2));
+}
+
+int FindMax(double *array, unsigned int size)
+{
+  double max = 0.0;
+  unsigned int i, index_max = 0;
+
+  for (i = 0; i < size; i++)
+  {
+    if (array[i] > max)
+    {
+      // If current value is greater than max
+      // value then replace it with max value
+      max = array[i];
+      index_max = i;
+    }
+  }
+  return index_max;
 }
