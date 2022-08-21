@@ -6,24 +6,22 @@
 #include <math.h>
 
 #include "./includes/ADS131A0X/ADS131A0x.h"
+#include "FFT_SIL.h"
 
 #define SIZE_SERIAL_BUFFER 10
 
 //======DFT parameters====
 #define SIZE_DATA 4096
-#define TwoPI 6.2832
 
-int index_data;
-double fs = 500.0; // smapling rate
-double freq_resolution, freq_bin;
-double W[SIZE_DATA]; // Twiddle Factor array
-
+double fs = 500.0; // smapling rate (Hz)
+double Spctm[SIZE_DATA];
+double freq_bin[SIZE_DATA];
 // Input data array (from ADC, only real number)
 double Volt_I[SIZE_DATA], Volt_Q[SIZE_DATA];
 
 // Outpuf DFT Result array (Freq Spectrum)
-double DFT_I_Re[SIZE_DATA / 2 + 1], DFT_I_Im[SIZE_DATA / 2 + 1];
-double PwrSpctm_I[SIZE_DATA / 2 + 1];
+// double DFT_I_Re[SIZE_DATA / 2 + 1], DFT_I_Im[SIZE_DATA / 2 + 1];
+// double PwrSpctm_I[SIZE_DATA / 2 + 1];
 // double Xp_Odd_Ch1[SIZE_DATA], Xp_Even_Ch1[SIZE_DATA];
 // double Xp_Odd_Ch2[SIZE_DATA], Xp_Even_Ch2[SIZE_DATA];
 
@@ -61,7 +59,6 @@ int status_ISR_Register;
 //===============General purpose parameters===============
 char DataIn[SIZE_SERIAL_BUFFER]; // Serial in data buffer;
 char arySerialOutMsg[100] = {0}; // Traditional C char array for serial communication about ADS131A04 SysCmd
-double START, END;               // for calculating processing time
 
 // loop count
 uint8_t isBufferAvailable = 0;
@@ -71,6 +68,7 @@ uint32_t countDataAcq_Th = 500 * 10;
 // loop wait time
 int time_message_wait; // milliseconds
 int time_loop_halt;    // milliseconds
+double START, END;     // for calculating processing time
 
 uint8_t Status_SerialOut; // Flag to start reading (Status_SerialOut:1=>output on;   Status_SerialOut:0=>output off!)
 uint8_t Size_Serial;
@@ -135,9 +133,6 @@ int main(int argc, char *argv[])
   pFile_ADC = fopen(strAry_filename_rawdata, "w");
   pFile_DFT = fopen(strary_filename_DFT, "w");
 
-  // set DFT frequency resolution
-  freq_resolution = fs / (double)SIZE_DATA;
-
   // pigpio.h initializing Function
   if (gpioInitialise() < 0)
   {
@@ -165,6 +160,8 @@ int main(int argc, char *argv[])
 
   // Enable interruption at GPIO_0
   status_ISR_Register = gpioSetISRFunc(17, FALLING_EDGE, 0, myInterrupt0);
+
+  // show ISR initialization error message according to return value
   if (status_ISR_Register == 0)
   {
     printf("ISR Registered OK!\n");
@@ -200,80 +197,42 @@ int main(int argc, char *argv[])
   GPIO_7=Connector_#07=BCM_#04
   */
 
-  // This should be change to infinite loop, such as while(1){}
+  // This should be change to infinite loop, such as while(1){}?
+
+  // NO! here, it should be a thread that detect
+  // if the newest 500 point in the circular buffer had been update?
+  // then it would do the FFT and HB/RR analysis again
   while (countDataAcq < SIZE_DATA)
   {
     // Continuously detect GPIO interruption until gathering SIZE_DATA points data from ADC.
   }
 
-  // Disable interruption at GPIO_0 through calling  "gpioSetISRFunc" function again by passing a NULL function pointer
+  // Disable interruption at GPIO_0 through calling  "gpioSetISRFunc" function again
+  // by passing a NULL function pointer
   gpioSetISRFunc(17, FALLING_EDGE, 0, NULL);
 
   printf("Stop Data Acquiring!\n ===================\n");
-  START = clock();
-  // fprintf(pFile_ADC, "%6.3f,%6.3f \n", aData_ADC[1], aData_ADC[2]);
-
-  //==================
-  // Generate W_N(Twiddle Factor) array
-  // With FFT, it doesn't need so many W_N, it might only needs half of it
-  printf("Generating %dth-order W...\n", SIZE_DATA);
-
-  // W_N_k=cos(2PI*k/N) ,k= freq. bin
-  for (index_data = 0; index_data < SIZE_DATA; ++index_data)
-  {
-    W[index_data] = cos(index_data * TwoPI / SIZE_DATA);
-  }
-
-  END = clock();
-  printf(" It costs %f s. \n", (END - START) / CLOCKS_PER_SEC);
-
-  //====
-  // Calculta DFT
-
-  int index_freq; // time and frequency domain indices
-
-  // Calculate DFT and power spectrum up to Nyquist frequency
-  int to_sin = 3 * SIZE_DATA / 4; // index offset for sin
-
-  //---for Real Part (COS(Theta))
-  int index_W;
-
-  //---for Imaginary Part 's offset (SIN(Theta)), because COS(Theta+3*PI/2)=SIN(Theta);
-  int Offset_CosToSin = 3 * SIZE_DATA / 4;
-
-  /*
-  On the unit circle of COS(Theta) value, just go forward counterclockwise (offset) 3*PI/2,
-  you will get the value for SIN(Theta)
-  So, if 2PI->N points, then (3/2)*PI->3N/4 points
-  */
 
   // calculate processing time
-  printf("Starting DFT with %d th order...\n", SIZE_DATA);
+
+  // Mark DFT start time
   START = clock();
 
-  for (index_freq = 0; index_freq <= SIZE_DATA / 2; ++index_freq)
-  {
-    DFT_I_Re[index_freq] = 0;
-    DFT_I_Im[index_freq] = 0;
+  // DFT, input I signal=Volt_I,Outpust spectrum=Spctm
+  DFT(Volt_I, SIZE_DATA, fs, freq_bin, Spctm);
 
-    for (index_data = 0; index_data < SIZE_DATA; ++index_data)
-    {
-      index_W = index_freq * index_data;
+  // FFT for SIL HB/RR detection
+  FFT_SIL(Volt_I, SIZE_DATA, fs, freq_bin, Spctm);
 
-      DFT_I_Re[index_freq] += Volt_I[index_data] * W[index_W % SIZE_DATA];
-      DFT_I_Im[index_freq] -= Volt_I[index_data] * W[(index_W + Offset_CosToSin) % SIZE_DATA];
-    }
-    PwrSpctm_I[index_freq] = DFT_I_Re[index_freq] * DFT_I_Re[index_freq] + DFT_I_Im[index_freq] * DFT_I_Im[index_freq];
+  // Mark DFT end time
+  END = clock();
 
-    freq_bin = freq_resolution * (double)index_freq;
-    fprintf(pFile_DFT, "%d,%6.4f,%6.3f\n", index_freq, freq_bin, PwrSpctm_I[index_freq]);
-  }
+  // Show processing time
+  printf("Complete! It costs %f seconds! \n", (END - START) / CLOCKS_PER_SEC);
 
+  // fprintf(pFile_DFT, "%d,%6.4f,%6.3f\n", index_freq, freq_bin, PwrSpctm_I[index_freq]);
   fclose(pFile_ADC);
   fclose(pFile_DFT);
-
-  END = clock();
-  printf("Complete! It costs %f seconds! \n", (END - START) / CLOCKS_PER_SEC);
 
   // Quick sort the power spectrum array
   // qsort(PwrSpctm_I, SIZE_DATA, sizeof(double), compare_double);
@@ -282,7 +241,12 @@ int main(int argc, char *argv[])
 
   return 0;
 
+  // NOTE:2022/08/16
+  // Convert following Serial input polling function to
+  // a polling thread including standard input detection (fgets)
+  // ex: fgets(string_name, string_length, stdin);
   /*
+
   while (countWhileLoop <= 100000)
   {
     //Replaced by "fgets" to receive input string! Maybe ot doesn't need Serial in command anymore?
@@ -442,14 +406,14 @@ void FFT(flt_complex_nmb_t *ptr_input_array, flt_complex_nmb_t *ptr_exp_array, u
         ptr_input_array[loop_index3] = flt_complex_add(&ptr_input_array[loop_index3], &help_temp);
       }
       if (loop_index2 < (Size_fft - 1))
-      if (loop_index2 < (Size_fft - 1))
-      { /* No multiplication in the last cycle */
-        current_exponent = flt_complex_mult(&current_exponent, &rotate_factor);
-      }
+        if (loop_index2 < (Size_fft - 1))
+        { /* No multiplication in the last cycle */
+          current_exponent = flt_complex_mult(&current_exponent, &rotate_factor);
+        }
     }
   }
 }
-                                                                                                                    
+
 uint16_t Bit_Reverse(uint16_t previous_index, uint16_t FFT_Size)
 {
   uint16_t retValue;
