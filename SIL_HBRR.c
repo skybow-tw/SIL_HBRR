@@ -11,7 +11,7 @@
 #define SIZE_SERIAL_BUFFER 10
 
 //======DFT parameters====
-#define SIZE_DATA 4096
+#define SIZE_DATA 65536
 
 double fs = 500.0; // smapling rate (Hz)
 double SpctmValue_I_chl[SIZE_DATA], SpctmValue_Q_chl[SIZE_DATA];
@@ -22,37 +22,9 @@ double Volt_I[SIZE_DATA], Volt_Q[SIZE_DATA];
 
 // Outpuf DFT Result array (Freq Spectrum)
 // double DFT_I_Re[SIZE_DATA / 2 + 1], DFT_I_Im[SIZE_DATA / 2 + 1];
-// double PwrSpctm_I[SIZE_DATA / 2 + 1];
+// double SpctmValue_I_chl[SIZE_DATA / 2 + 1];
 // double Xp_Odd_Ch1[SIZE_DATA], Xp_Even_Ch1[SIZE_DATA];
 // double Xp_Odd_Ch2[SIZE_DATA], Xp_Even_Ch2[SIZE_DATA];
-
-// FFT parameters
-/* Structure definitions */
-typedef struct float_complex_number_s
-{
-  float real;
-  float imag;
-} flt_complex_nmb_t;
-
-/* Export functions */
-flt_complex_nmb_t flt_complex_mult(flt_complex_nmb_t *, flt_complex_nmb_t *);
-flt_complex_nmb_t flt_complex_add(flt_complex_nmb_t *, flt_complex_nmb_t *);
-flt_complex_nmb_t flt_complex_sub(flt_complex_nmb_t *, flt_complex_nmb_t *);
-flt_complex_nmb_t flt_complex_conjugate(flt_complex_nmb_t *);
-void FFT(flt_complex_nmb_t *, flt_complex_nmb_t *, uint16_t log2size);
-
-/* Private Functions */
-uint16_t Bit_Reverse(uint16_t previous_index, uint16_t FFT_Size);
-
-/*
- Rader's Bit Reversal Permutation
- Example: 001 => 100
- Input
- uint16_t previous_index - previous bit reversal value
- uint16_t number - FFT number = 2^M
- Return
- uint16_t - next bit reversal value
-*/
 
 //===pigpio parameters=====
 int status_ISR_Register;
@@ -221,6 +193,7 @@ int main(int argc, char *argv[])
 
   // DFT, input I signal=Volt_I,Outpust spectrum=SpctmValue_I_chl
   DFT(Volt_I, SIZE_DATA, fs, SpctmFreq, SpctmValue_I_chl);
+  // DFT(Volt_Q, SIZE_DATA, fs, SpctmFreq, SpctmValue_Q_chl);
 
   // FFT for SIL HB/RR detection
   // FFT_SIL(Volt_I, SIZE_DATA, fs, SpctmFreq, SpctmValue_I_chl);
@@ -231,14 +204,16 @@ int main(int argc, char *argv[])
   // Show processing time
   printf("Complete! It costs %f seconds! \n", (END - START) / CLOCKS_PER_SEC);
 
-  // fprintf(pFile_DFT, "%d,%6.4f,%6.3f\n", index_freq, SpctmFreq, PwrSpctm_I[index_freq]);
+  for (int index_freq = 0; index_freq <= SIZE_DATA - 1; index_freq++)
+    fprintf(pFile_DFT, "%d,%6.4f,%6.3f\n", index_freq, SpctmFreq[index_freq], SpctmValue_I_chl[index_freq]);
+
   fclose(pFile_ADC);
   fclose(pFile_DFT);
 
   // Quick sort the power spectrum array
-  // qsort(PwrSpctm_I, SIZE_DATA, sizeof(double), compare_double);
+  // qsort(SpctmValue_I_chl, SIZE_DATA, sizeof(double), compare_double);
 
-  // printf("MAX freq value is %6.4f \n", PwrSpctm_I[SIZE_DATA - 1]);
+  // printf("MAX freq value is %6.4f \n", SpctmValue_I_chl[SIZE_DATA - 1]);
 
   return 0;
 
@@ -365,75 +340,4 @@ int FindMax(double *array, unsigned int size)
     }
   }
   return index_max;
-}
-
-void FFT(flt_complex_nmb_t *ptr_input_array, flt_complex_nmb_t *ptr_exp_array, uint16_t log2_size)
-{
-  uint16_t Size_fft = (1u << log2_size);
-  flt_complex_nmb_t current_exponent;
-  flt_complex_nmb_t rotate_factor;
-  uint16_t current_fft_number;
-  uint16_t current_fft_number_div2;
-  uint16_t loop_index1;
-  uint16_t loop_index2;
-  uint16_t loop_index3;
-  flt_complex_nmb_t help_temp;
-
-  /* Bit Revesing algorithm */
-  for (loop_index1 = 0, loop_index2 = 0; loop_index1 < Size_fft - 2; loop_index1++)
-  {
-    loop_index2 = Bit_Reverse(loop_index2, Size_fft);
-    if ((loop_index1 + 1) < loop_index2)
-    {
-      help_temp = ptr_input_array[loop_index2];
-      ptr_input_array[loop_index2] = ptr_input_array[loop_index1 + 1];
-      ptr_input_array[loop_index1 + 1] = help_temp;
-    }
-  }
-  /* FFT Calculation */
-  for (loop_index1 = 0; loop_index1 < log2_size; loop_index1++)
-  {
-    current_exponent.real = 1.0;
-    current_exponent.imag = 0.0;
-    rotate_factor = ptr_exp_array[loop_index1];
-    current_fft_number_div2 = 1u << loop_index1;
-    current_fft_number = current_fft_number_div2 << 1u;
-    for (loop_index2 = 0; loop_index2 < current_fft_number_div2; loop_index2++)
-    {
-      for (loop_index3 = loop_index2; loop_index3 < Size_fft; loop_index3 += current_fft_number)
-      {
-        help_temp = flt_complex_mult(&ptr_input_array[loop_index3 + current_fft_number_div2], &current_exponent);
-        ptr_input_array[loop_index3 + current_fft_number_div2] = flt_complex_sub(&ptr_input_array[loop_index3], &help_temp);
-        ptr_input_array[loop_index3] = flt_complex_add(&ptr_input_array[loop_index3], &help_temp);
-      }
-      if (loop_index2 < (Size_fft - 1))
-        if (loop_index2 < (Size_fft - 1))
-        { /* No multiplication in the last cycle */
-          current_exponent = flt_complex_mult(&current_exponent, &rotate_factor);
-        }
-    }
-  }
-}
-
-uint16_t Bit_Reverse(uint16_t previous_index, uint16_t FFT_Size)
-{
-  uint16_t retValue;
-  uint16_t currentNumber = (FFT_Size >> 1u); /* FFT_Size/2 */
-
-  if (previous_index == (FFT_Size - 1))
-  { /* Binary 111...111 => 000...000 */
-    retValue = 0;
-  }
-  else
-  {
-    retValue = previous_index;
-    while (retValue >= currentNumber)
-    {
-      retValue -= currentNumber; /* Bit clear */
-      currentNumber >>= 1u;      /* Prepare next bit */
-    }
-    retValue += currentNumber; /* Bit set */
-  }
-
-  return retValue;
 }
