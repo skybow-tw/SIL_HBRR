@@ -14,8 +14,9 @@
 #define SIZE_DATA 4096
 
 double fs = 500.0; // smapling rate (Hz)
-double Spctm[SIZE_DATA];
-double freq_bin[SIZE_DATA];
+double SpctmValue_I_chl[SIZE_DATA], SpctmValue_Q_chl[SIZE_DATA];
+
+double SpctmFreq[SIZE_DATA];
 // Input data array (from ADC, only real number)
 double Volt_I[SIZE_DATA], Volt_Q[SIZE_DATA];
 
@@ -218,11 +219,11 @@ int main(int argc, char *argv[])
   // Mark DFT start time
   START = clock();
 
-  // DFT, input I signal=Volt_I,Outpust spectrum=Spctm
-  DFT(Volt_I, SIZE_DATA, fs, freq_bin, Spctm);
+  // DFT, input I signal=Volt_I,Outpust spectrum=SpctmValue_I_chl
+  DFT(Volt_I, SIZE_DATA, fs, SpctmFreq, SpctmValue_I_chl);
 
   // FFT for SIL HB/RR detection
-  FFT_SIL(Volt_I, SIZE_DATA, fs, freq_bin, Spctm);
+  // FFT_SIL(Volt_I, SIZE_DATA, fs, SpctmFreq, SpctmValue_I_chl);
 
   // Mark DFT end time
   END = clock();
@@ -230,7 +231,7 @@ int main(int argc, char *argv[])
   // Show processing time
   printf("Complete! It costs %f seconds! \n", (END - START) / CLOCKS_PER_SEC);
 
-  // fprintf(pFile_DFT, "%d,%6.4f,%6.3f\n", index_freq, freq_bin, PwrSpctm_I[index_freq]);
+  // fprintf(pFile_DFT, "%d,%6.4f,%6.3f\n", index_freq, SpctmFreq, PwrSpctm_I[index_freq]);
   fclose(pFile_ADC);
   fclose(pFile_DFT);
 
