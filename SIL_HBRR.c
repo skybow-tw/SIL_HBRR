@@ -11,10 +11,12 @@
 #define SIZE_SERIAL_BUFFER 10
 
 //======DFT parameters====
-#define SIZE_DATA 65536
+#define SIZE_DATA 4096 
 
 double fs = 500.0; // smapling rate (Hz)
 double SpctmValue_I_chl[SIZE_DATA], SpctmValue_Q_chl[SIZE_DATA];
+double W_N[SIZE_DATA];
+double *aryTF = NULL;
 
 double SpctmFreq[SIZE_DATA];
 // Input data array (from ADC, only real number)
@@ -92,16 +94,12 @@ int main(int argc, char *argv[])
   //  Declare a "time_t" type variable
   time_t t1 = time(NULL);
 
-  // Declare a "struct tm" type variable
+  // Declare a "struct tm" type pointer
   struct tm *nPtr = localtime(&t1);
 
   // Format tm type to string literal
-  strftime(strAry_filename_rawdata, 64, "%Y_%m%d_%H%M%S_rawdata_", nPtr);
-  strftime(strary_filename_DFT, 64, "%Y_%m%d_%H%M%S_DFT", nPtr);
-
-  // concatenate filename string with .csv
-  strcat(strAry_filename_rawdata, ".csv");
-  strcat(strary_filename_DFT, ".csv");
+  strftime(strAry_filename_rawdata, 64, "Datalog/%Y_%m%d_%H%M%S_rawdata.csv", nPtr);
+  strftime(strary_filename_DFT, 64, "Datalog/%Y_%m%d_%H%M%S_DFT.csv", nPtr);
 
   pFile_ADC = fopen(strAry_filename_rawdata, "w");
   pFile_DFT = fopen(strary_filename_DFT, "w");
@@ -190,9 +188,13 @@ int main(int argc, char *argv[])
 
   // Mark DFT start time
   START = clock();
+  aryTF = GenTwiddleFactor(SIZE_DATA);
+
+  for (int q = 0; q < 10; q++)
+    printf("Twiddle Factor #%d= %f\n", q, aryTF[q]);
 
   // DFT, input I signal=Volt_I,Outpust spectrum=SpctmValue_I_chl
-  DFT(Volt_I, SIZE_DATA, fs, SpctmFreq, SpctmValue_I_chl);
+  // DFT(Volt_I, SIZE_DATA, fs, SpctmFreq, SpctmValue_I_chl, aryTF);
   // DFT(Volt_Q, SIZE_DATA, fs, SpctmFreq, SpctmValue_Q_chl);
 
   // FFT for SIL HB/RR detection
@@ -200,7 +202,7 @@ int main(int argc, char *argv[])
 
   // Mark DFT end time
   END = clock();
-
+  // free(aryTF);
   // Show processing time
   printf("Complete! It costs %f seconds! \n", (END - START) / CLOCKS_PER_SEC);
 
@@ -209,6 +211,11 @@ int main(int argc, char *argv[])
 
   fclose(pFile_ADC);
   fclose(pFile_DFT);
+
+  /* This TF memory should be freed when the program is terminated
+  free(aryTF);
+  aryTF = NULL;
+  */
 
   // Quick sort the power spectrum array
   // qsort(SpctmValue_I_chl, SIZE_DATA, sizeof(double), compare_double);
