@@ -11,7 +11,7 @@
 #define SIZE_SERIAL_BUFFER 10
 
 //======DFT parameters====
-#define SIZE_DATA 4096 
+#define SIZE_DATA 4096
 
 double fs = 500.0; // smapling rate (Hz)
 double SpctmValue_I_chl[SIZE_DATA], SpctmValue_Q_chl[SIZE_DATA];
@@ -155,21 +155,8 @@ int main(int argc, char *argv[])
       printf("error!\n");
     }
   }
-  /*
-  NOTE: pigpio ISR use BCM2835 pin number!!!
-  Initialize GPIO_0(BCM #17) with interrupt
-  GPIO_0=Connector_#11=BCM_#17
-  GPIO_1=Connector_#12=BCM_#18
-  GPIO_2=Connector_#13=BCM_#27
-  GPIO_3=Connector_#15=BCM_#22
-  GPIO_4=Connector_#16=BCM_#23
-  GPIO_5=Connector_#18=BCM_#24
-  GPIO_6=Connector_#22=BCM_#25
-  GPIO_7=Connector_#07=BCM_#04
-  */
 
   // This should be change to infinite loop, such as while(1){}?
-
   // NO! here, it should be a thread that detect
   // if the newest 500 point in the circular buffer had been update?
   // then it would do the FFT and HB/RR analysis again
@@ -223,90 +210,6 @@ int main(int argc, char *argv[])
   // printf("MAX freq value is %6.4f \n", SpctmValue_I_chl[SIZE_DATA - 1]);
 
   return 0;
-
-  // NOTE:2022/08/16
-  // Convert following Serial input polling function to
-  // a polling thread including standard input detection (fgets)
-  // ex: fgets(string_name, string_length, stdin);
-  /*
-
-  while (countWhileLoop <= 100000)
-  {
-    //Replaced by "fgets" to receive input string! Maybe ot doesn't need Serial in command anymore?
-    //=>TEST RESULT:
-    //NO GOOD! The fgets would wait for input only one time,it doesn't acts like the Arduino Serial input/ouput
-    //So we need a interrupt serial function to receive users' manual commands at any moment!!
-
-    // printf("Loop#_%d_Input Command:", countDataAcq);
-    // fgets(DataIn, SIZE_SERIAL_BUFFER, stdin);
-
-
-    if (isBufferAvailable == 1) //should be replaced by  serial buffer input ISR event!
-    {
-
-      //Read Buffer and store at DataIn
-
-      switch (DataIn[0])
-      {
-      case 'A':
-        sprintf(arySerialOutMsg, "TEST!\n");
-        break;
-      case 'I':
-        ADS131A0x_InitialADC();
-        break;
-
-      case 'S':
-        countDataAcq = 0;
-        Status_SerialOut = 1;
-
-        ADS131A0x_InitialADC();
-        ADS131A0x_Start();
-
-        sprintf(arySerialOutMsg, "@MStart Data Acquiring!\n ===================\n");
-        isBufferAvailable = 0; //Simulation,trigger only one time!
-
-        //Initialize GPIO_0 with interrupt
-        break;
-
-      case 'E':
-        Status_SerialOut = 0;
-        sprintf(arySerialOutMsg, "@MStop Data Acquiring!\n ");
-
-        ADS131A0x_Stop();
-
-        break;
-
-      default:
-        sprintf(arySerialOutMsg, "Undefined command!\n");
-        break;
-      }
-      printf(arySerialOutMsg);
-    }
-
-
-    //BufferClean(DataIn); //Drop 1 byte command?
-    if (Status_SerialOut == 1) //ADC continuous DAQ on ,and dump first 2 sets of ADC datas
-    {
-      if ((countDataAcq > 1))
-      {
-        ADS131A0x_GetADCData(1, aData_ADC); //Mode1= Real ADC
-
-        printf("Count:%d;", countDataAcq); //To be replaced by RPi serial library
-
-        // printf("ADC2=%6.3f,ADC3=%6.3f \n", aData_ADC[1], aData_ADC[2]);
-        sprintf(arySerialOutMsg, "ADC2=%6.3f,ADC3=%6.3f \n", aData_ADC[1], aData_ADC[2]);
-        printf(arySerialOutMsg); //To be replaced by RPi serial library
-
-        // delay(time_loop_halt);
-        // delayMicroseconds(2000);//max accurate value=16383 us
-      }
-
-      countDataAcq++;
-    }
-
-    countWhileLoop++;
-    // printf("Loop:%d\n", countWhileLoop);
-  }*/
 }
 
 //-------------------------------------------------------

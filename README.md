@@ -71,3 +71,16 @@ int status = gpioInitialise();
 
 
   */
+
+  /*
+  NOTE: pigpio ISR use BCM2835 pin number!!!
+  Initialize GPIO_0(BCM #17) with interrupt
+  GPIO_0=Connector_#11=BCM_#17
+  GPIO_1=Connector_#12=BCM_#18
+  GPIO_2=Connector_#13=BCM_#27
+  GPIO_3=Connector_#15=BCM_#22
+  GPIO_4=Connector_#16=BCM_#23
+  GPIO_5=Connector_#18=BCM_#24
+  GPIO_6=Connector_#22=BCM_#25
+  GPIO_7=Connector_#07=BCM_#04
+  */
