@@ -11,7 +11,7 @@
 #define SIZE_SERIAL_BUFFER 10
 
 //======DFT parameters====
-#define SIZE_DATA 4096
+#define SIZE_DATA 32768
 
 double fs = 500.0; // smapling rate (Hz)
 double SpctmValue_I_chl[SIZE_DATA], SpctmValue_Q_chl[SIZE_DATA];
@@ -121,8 +121,11 @@ int main(int argc, char *argv[])
   ADS131A0x_setSPI(CS_0, 2000000);
 
   // Simulation
-  isBufferAvailable = 1;
-  DataIn[0] = 'S';
+  isBufferAvailable = 1; // unused
+  DataIn[0] = 'S';       // unused
+
+  // Follwoing part should be put inside the while loop,
+  // and it would start acquiring data after get "START" command form keyboard or RS-232 "%S"
 
   ADS131A0x_InitialADC();
   ADS131A0x_Start();
@@ -177,12 +180,14 @@ int main(int argc, char *argv[])
   START = clock();
   aryTF = GenTwiddleFactor(SIZE_DATA);
 
+  /*
   for (int q = 0; q < 10; q++)
     printf("Twiddle Factor #%d= %f\n", q, aryTF[q]);
+  */
 
   // DFT, input I signal=Volt_I,Outpust spectrum=SpctmValue_I_chl
-  // DFT(Volt_I, SIZE_DATA, fs, SpctmFreq, SpctmValue_I_chl, aryTF);
-  // DFT(Volt_Q, SIZE_DATA, fs, SpctmFreq, SpctmValue_Q_chl);
+  DFT(Volt_I, SIZE_DATA, fs, SpctmFreq, SpctmValue_I_chl, aryTF);
+  DFT(Volt_Q, SIZE_DATA, fs, SpctmFreq, SpctmValue_Q_chl, aryTF);
 
   // FFT for SIL HB/RR detection
   // FFT_SIL(Volt_I, SIZE_DATA, fs, SpctmFreq, SpctmValue_I_chl);
@@ -194,7 +199,7 @@ int main(int argc, char *argv[])
   printf("Complete! It costs %f seconds! \n", (END - START) / CLOCKS_PER_SEC);
 
   for (int index_freq = 0; index_freq <= SIZE_DATA - 1; index_freq++)
-    fprintf(pFile_DFT, "%d,%6.4f,%6.3f\n", index_freq, SpctmFreq[index_freq], SpctmValue_I_chl[index_freq]);
+    fprintf(pFile_DFT, "%d,%6.4f,%6.3f,%6.3f\n", index_freq, SpctmFreq[index_freq], SpctmValue_I_chl[index_freq], SpctmValue_Q_chl[index_freq]);
 
   fclose(pFile_ADC);
   fclose(pFile_DFT);
