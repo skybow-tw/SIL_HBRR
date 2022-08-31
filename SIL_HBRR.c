@@ -11,7 +11,7 @@
 #define SIZE_SERIAL_BUFFER 10
 
 //======DFT parameters====
-#define SIZE_DATA 32768
+#define SIZE_DATA 30000
 
 double fs = 500.0; // smapling rate (Hz)
 double SpctmValue_I_chl[SIZE_DATA], SpctmValue_Q_chl[SIZE_DATA];
@@ -115,6 +115,23 @@ int main(int argc, char *argv[])
     printf("pigpio initialize success!\n");
   }
 
+  // int SerialStatus = 999;
+
+  // SerialStatus = serOpen("/dev/ttyS0", 9600, 0);
+
+  // if (SerialStatus >= 0)
+  //   printf("SERIAL open success at handle: %d!\n", SerialStatus);
+  // else
+  //   printf("SERIAL open fail with error: %d!\n", SerialStatus); //-24= PI_NO_HANDLE, -72=PI_SER_OPEN_FAILED
+
+  // for (int i = 0; i < 5; i++)
+  // {
+  //   serWrite(SerialStatus, "skybow", 7);
+  //   sleep(1);
+  //   printf("write # %d\n", i);
+  // }
+  // printf("SERIAL close success at handle: %d!\n", serClose(SerialStatus));
+
   //======
 
   // Initialize SPI with CS=0,speed=2MHz (SPI Mode is fixed to Mode1)
@@ -178,16 +195,14 @@ int main(int argc, char *argv[])
 
   // Mark DFT start time
   START = clock();
+
+  // This TF should be calculated only once in the beginning
   aryTF = GenTwiddleFactor(SIZE_DATA);
 
-  /*
-  for (int q = 0; q < 10; q++)
-    printf("Twiddle Factor #%d= %f\n", q, aryTF[q]);
-  */
-
   // DFT, input I signal=Volt_I,Outpust spectrum=SpctmValue_I_chl
-  DFT(Volt_I, SIZE_DATA, fs, SpctmFreq, SpctmValue_I_chl, aryTF);
-  DFT(Volt_Q, SIZE_DATA, fs, SpctmFreq, SpctmValue_Q_chl, aryTF);
+  // Set isRRHB=1 to perform FFT at human RR/HB detection mode
+  DFT(Volt_I, SIZE_DATA, fs, SpctmFreq, SpctmValue_I_chl, aryTF, 1);
+  DFT(Volt_Q, SIZE_DATA, fs, SpctmFreq, SpctmValue_Q_chl, aryTF, 1);
 
   // FFT for SIL HB/RR detection
   // FFT_SIL(Volt_I, SIZE_DATA, fs, SpctmFreq, SpctmValue_I_chl);
@@ -198,7 +213,8 @@ int main(int argc, char *argv[])
   // Show processing time
   printf("Complete! It costs %f seconds! \n", (END - START) / CLOCKS_PER_SEC);
 
-  for (int index_freq = 0; index_freq <= SIZE_DATA - 1; index_freq++)
+  for (int index_freq = 0; index_freq < SIZE_DATA; index_freq++)
+    // for (int index_freq = 0; index_freq < 100; index_freq++)
     fprintf(pFile_DFT, "%d,%6.4f,%6.3f,%6.3f\n", index_freq, SpctmFreq[index_freq], SpctmValue_I_chl[index_freq], SpctmValue_Q_chl[index_freq]);
 
   fclose(pFile_ADC);
