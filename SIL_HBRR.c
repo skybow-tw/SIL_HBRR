@@ -196,9 +196,6 @@ int main(int argc, char *argv[])
 
   // calculate processing time
 
-  // Mark DFT start time
-  START = clock();
-
   /* DFT calculation
   // This TF should be calculated only once in the beginning
   aryTF = GenTwiddleFactor(SIZE_DATA);
@@ -209,16 +206,20 @@ int main(int argc, char *argv[])
   DFT(Volt_Q, SIZE_DATA, fs, SpctmFreq, SpctmValue_Q_chl, aryTF, 1);
   */
 
+  // Mark start time
+  START = clock();
+
   // FFT for SIL HB/RR detection
   aryRF = GenRF(STAGE);
-  FFT_SIL(Volt_I, STAGE, fs, SpctmFreq, SpctmValue_I_chl, aryRF, 1);
-  FFT_SIL(Volt_I, STAGE, fs, SpctmFreq, SpctmValue_Q_chl, aryRF, 1);
 
-  // Mark DFT end time
+  // Mark end time
   END = clock();
-  // free(aryTF);
+
   // Show processing time
   printf("Complete! It costs %f seconds! \n", (END - START) / CLOCKS_PER_SEC);
+
+  FFT_SIL(Volt_I, STAGE, fs, SpctmFreq, SpctmValue_I_chl, aryRF, 1);
+  // FFT_SIL(Volt_I, STAGE, fs, SpctmFreq, SpctmValue_Q_chl, aryRF, 1);
 
   for (int index_freq = 0; index_freq < SIZE_DATA; index_freq++)
     // for (int index_freq = 0; index_freq < 100; index_freq++)
@@ -226,11 +227,6 @@ int main(int argc, char *argv[])
 
   fclose(pFile_ADC);
   fclose(pFile_DFT);
-
-  /* This TF memory should be freed when the program is terminated
-  free(aryTF);
-  aryTF = NULL;
-  */
 
   // Quick sort the power spectrum array
   // qsort(SpctmValue_I_chl, SIZE_DATA, sizeof(double), compare_double);
