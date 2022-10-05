@@ -11,12 +11,15 @@
 #define SIZE_SERIAL_BUFFER 10
 
 //======DFT parameters====
-#define SIZE_DATA 30000
+// STAGE=15, SIZE_DATA=2^15=32768
+#define SIZE_DATA 32768
+#define STAGE 15
 
 double fs = 500.0; // smapling rate (Hz)
 double SpctmValue_I_chl[SIZE_DATA], SpctmValue_Q_chl[SIZE_DATA];
 double W_N[SIZE_DATA];
 double *aryTF = NULL;
+complex_t *aryRF = NULL;
 
 double SpctmFreq[SIZE_DATA];
 // Input data array (from ADC, only real number)
@@ -196,6 +199,7 @@ int main(int argc, char *argv[])
   // Mark DFT start time
   START = clock();
 
+  /* DFT calculation
   // This TF should be calculated only once in the beginning
   aryTF = GenTwiddleFactor(SIZE_DATA);
 
@@ -203,9 +207,12 @@ int main(int argc, char *argv[])
   // Set isRRHB=1 to perform FFT at human RR/HB detection mode
   DFT(Volt_I, SIZE_DATA, fs, SpctmFreq, SpctmValue_I_chl, aryTF, 1);
   DFT(Volt_Q, SIZE_DATA, fs, SpctmFreq, SpctmValue_Q_chl, aryTF, 1);
+  */
 
   // FFT for SIL HB/RR detection
-  // FFT_SIL(Volt_I, SIZE_DATA, fs, SpctmFreq, SpctmValue_I_chl);
+  aryRF = GenRF(STAGE);
+  FFT_SIL(Volt_I, STAGE, fs, SpctmFreq, SpctmValue_I_chl, aryRF, 1);
+  FFT_SIL(Volt_I, STAGE, fs, SpctmFreq, SpctmValue_Q_chl, aryRF, 1);
 
   // Mark DFT end time
   END = clock();
