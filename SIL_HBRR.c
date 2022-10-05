@@ -212,14 +212,14 @@ int main(int argc, char *argv[])
   // FFT for SIL HB/RR detection
   aryRF = GenRF(STAGE);
 
+  FFT_SIL(Volt_I, STAGE, fs, SpctmFreq, SpctmValue_I_chl, aryRF, 1);
+  FFT_SIL(Volt_I, STAGE, fs, SpctmFreq, SpctmValue_Q_chl, aryRF, 1);
+
   // Mark end time
   END = clock();
 
   // Show processing time
   printf("Complete! It costs %f seconds! \n", (END - START) / CLOCKS_PER_SEC);
-
-  FFT_SIL(Volt_I, STAGE, fs, SpctmFreq, SpctmValue_I_chl, aryRF, 1);
-  // FFT_SIL(Volt_I, STAGE, fs, SpctmFreq, SpctmValue_Q_chl, aryRF, 1);
 
   for (int index_freq = 0; index_freq < SIZE_DATA; index_freq++)
     // for (int index_freq = 0; index_freq < 100; index_freq++)
