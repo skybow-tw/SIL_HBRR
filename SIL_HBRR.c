@@ -254,14 +254,14 @@ int main(int argc, char *argv[])
     SpctmValue_part2[index_freq] = SpctmValue_I_chl[index_freq + lower_limit_HR];
   }
 
-  int index_RR = FindMax(SpctmValue_part1, upper_limit_RR);
+  int index_RR = FindMax(SpctmValue_part1, size_RR_data);
   int index_HR = FindMax(SpctmValue_part2, size_HR_data);
 
   hrrr_I_chl.RespRate = (int)(SpctmFreq[index_RR + lower_limit_RR] * 60);
   hrrr_I_chl.HrtRate = (int)(SpctmFreq[index_HR + lower_limit_HR] * 60);
 
   // printf("i_HR:%d,i_RR:%d\n", index_RR, index_HR);
-  printf("HR:%d, RR:%d\n", hrrr_I_chl.HrtRate, hrrr_I_chl.RespRate);
+  printf("RR:%d,HR:%d\n", hrrr_I_chl.RespRate, hrrr_I_chl.HrtRate);
 
   for (index_freq = 0; index_freq < SIZE_DATA; index_freq++)
     // for (int index_freq = 0; index_freq < 100; index_freq++)
