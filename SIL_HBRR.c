@@ -31,6 +31,15 @@ double Volt_I[SIZE_DATA], Volt_Q[SIZE_DATA];
 // double Xp_Odd_Ch1[SIZE_DATA], Xp_Even_Ch1[SIZE_DATA];
 // double Xp_Odd_Ch2[SIZE_DATA], Xp_Even_Ch2[SIZE_DATA];
 
+//=====HB RR Analysis parameters=====
+int index_RR, index_HB;
+double SpctmValue_part1[SIZE_DATA], SpctmValue_part2[SIZE_DATA]; // dynamic allocation?
+
+int upper_limit_RR, lower_limit_HR, upper_limit_HR;
+int size_HB;
+int index_freq;
+vital_t hrrr_I_chl, hrrr_Q_chl;
+
 //===pigpio parameters=====
 int status_ISR_Register;
 
@@ -58,6 +67,8 @@ char strary_filename_DFT[64] = {};
 //===============General purpose Functions Declaration====================
 void BufferClean(char *);
 int compare_double(const void *arg1, const void *arg2);
+int compare_Spctm(const void *arg1, const void *arg2);
+int FindMax(double *array, uint32_t size);
 
 //================ISR for pigpio=======================
 // NOTE: when RPi GPIO#0 detect Falling Edge, it would trigger ISR,
@@ -206,14 +217,14 @@ int main(int argc, char *argv[])
   DFT(Volt_Q, SIZE_DATA, fs, SpctmFreq, SpctmValue_Q_chl, aryTF, 1);
   */
 
-  // Mark start time
-  START = clock();
-
   // FFT for SIL HB/RR detection
   aryRF = GenRF(STAGE);
 
-  FFT_SIL(Volt_I, STAGE, fs, SpctmFreq, SpctmValue_I_chl, aryRF, 1);
-  FFT_SIL(Volt_Q, STAGE, fs, SpctmFreq, SpctmValue_Q_chl, aryRF, 1);
+  // Mark start time
+  START = clock();
+
+  hrrr_I_chl = FFT_SIL(Volt_I, STAGE, fs, SpctmFreq, SpctmValue_I_chl, aryRF, 1);
+  // FFT_SIL(Volt_Q, STAGE, fs, SpctmFreq, SpctmValue_Q_chl, aryRF, 1);
 
   // Mark end time
   END = clock();
@@ -221,7 +232,25 @@ int main(int argc, char *argv[])
   // Show processing time
   printf("Complete! It costs %f seconds! \n", (END - START) / CLOCKS_PER_SEC);
 
-  for (int index_freq = 0; index_freq < SIZE_DATA; index_freq++)
+  upper_limit_RR = 39;  // fs/N=0.01526 ; RR=0~0.6HZ(0~36 pm), so 0.6/0.01526 ~=39
+  lower_limit_HR = 52;  // HB =0.8~5HZ (48~300bpm), so 0.8/0.01526=52.42 ~=52
+  upper_limit_HR = 328; // 5/0.01526 = 327.68 ~=328
+  size_HB = upper_limit_HR - lower_limit_HR + 1;
+
+  for (index_freq = 0; index_freq < upper_limit_RR; index_freq++)
+  {
+    SpctmValue_part1[index_freq] = SpctmValue_I_chl[index_freq];
+  }
+
+  for (index_freq = 0; index_freq < size_HB; index_freq++)
+  {
+    SpctmValue_part2[index_freq] = SpctmValue_I_chl[index_freq + lower_limit_HR];
+  }
+
+  int index_RR = FindMax(SpctmValue_part1, upper_limit_RR);
+  int index_HB = FindMax(SpctmValue_part2, size_HB);
+
+  for (index_freq = 0; index_freq < SIZE_DATA; index_freq++)
     // for (int index_freq = 0; index_freq < 100; index_freq++)
     fprintf(pFile_DFT, "%d,%6.4f,%6.3f,%6.3f\n", index_freq, SpctmFreq[index_freq], SpctmValue_I_chl[index_freq], SpctmValue_Q_chl[index_freq]);
 
@@ -229,7 +258,8 @@ int main(int argc, char *argv[])
   fclose(pFile_DFT);
 
   // Quick sort the power spectrum array
-  // qsort(SpctmValue_I_chl, SIZE_DATA, sizeof(double), compare_double);
+  // int Spctm_index[SIZE_DATA];
+  // qsort(Spctm_index, SIZE_DATA, sizeof(int), compare_Spctm);
 
   // printf("MAX freq value is %6.4f \n", SpctmValue_I_chl[SIZE_DATA - 1]);
 
@@ -250,15 +280,29 @@ void BufferClean(char *CharArray)
 
 int compare_double(const void *arg1, const void *arg2)
 {
-  // double ret = *(double *)(arg1) - *(double *)(arg2);
-  // if (ret > 0)
-  //   return 1;
-  // if (ret < 0)
-  //   return -1;
-  return (*(double *)(arg1) - *(double *)(arg2));
+  double ret = *(double *)(arg1) - *(double *)(arg2);
+  if (ret == 0)
+    return 0;
+  else if (ret > 0)
+    return 1;
+  else
+    return -1;
+  // return (*(double *)(arg1) - *(double *)(arg2));//NOT for double variable
 }
 
-int FindMax(double *array, unsigned int size)
+int compare_Spctm(const void *arg1, const void *arg2)
+{
+  double ret = *(double *)(arg1) - *(double *)(arg2);
+  if (ret == 0)
+    return 0;
+  else if (ret > 0)
+    return 1;
+  else
+    return -1;
+  // return (*(double *)(arg1) - *(double *)(arg2));//NOT for double variable
+}
+
+int FindMax(double *array, uint32_t size)
 {
   double max = 0.0;
   unsigned int i, index_max = 0;
