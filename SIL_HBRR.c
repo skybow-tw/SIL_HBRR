@@ -257,7 +257,7 @@ int main(int argc, char *argv[])
   int index_RR = FindMax(SpctmValue_part1, upper_limit_RR);
   int index_HR = FindMax(SpctmValue_part2, size_HR_data);
 
-  hrrr_I_chl.RespRate = (int)(SpctmFreq[index_RR] * 60);
+  hrrr_I_chl.RespRate = (int)(SpctmFreq[index_RR + lower_limit_RR] * 60);
   hrrr_I_chl.HrtRate = (int)(SpctmFreq[index_HR + lower_limit_HR] * 60);
 
   // printf("i_HR:%d,i_RR:%d\n", index_RR, index_HR);
