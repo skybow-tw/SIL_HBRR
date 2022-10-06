@@ -10,7 +10,7 @@
 
 #define SIZE_SERIAL_BUFFER 10
 
-//======DFT parameters====
+//======FFT parameters====
 // STAGE=15, SIZE_DATA=2^15=32768
 #define SIZE_DATA 32768
 #define STAGE 15
@@ -31,12 +31,12 @@ double Volt_I[SIZE_DATA], Volt_Q[SIZE_DATA];
 // double Xp_Odd_Ch1[SIZE_DATA], Xp_Even_Ch1[SIZE_DATA];
 // double Xp_Odd_Ch2[SIZE_DATA], Xp_Even_Ch2[SIZE_DATA];
 
-//=====HB RR Analysis parameters=====
-int index_RR, index_HB;
+//=====Human vital signs analysis algorithm parameters=====
+int index_RR, index_HR;
 double SpctmValue_part1[SIZE_DATA], SpctmValue_part2[SIZE_DATA]; // dynamic allocation?
 
 int upper_limit_RR, lower_limit_HR, upper_limit_HR;
-int size_HB;
+int size_HR_data;
 int index_freq;
 vital_t hrrr_I_chl, hrrr_Q_chl;
 
@@ -223,7 +223,10 @@ int main(int argc, char *argv[])
   // Mark start time
   START = clock();
 
-  hrrr_I_chl = FFT_SIL(Volt_I, STAGE, fs, SpctmFreq, SpctmValue_I_chl, aryRF, 1);
+  hrrr_I_chl.RespRate = 0;
+  hrrr_I_chl.HrtRate = 0;
+
+  FFT_SIL(Volt_I, STAGE, fs, SpctmFreq, SpctmValue_I_chl, aryRF, 1);
   // FFT_SIL(Volt_Q, STAGE, fs, SpctmFreq, SpctmValue_Q_chl, aryRF, 1);
 
   // Mark end time
@@ -235,20 +238,26 @@ int main(int argc, char *argv[])
   upper_limit_RR = 39;  // fs/N=0.01526 ; RR=0~0.6HZ(0~36 pm), so 0.6/0.01526 ~=39
   lower_limit_HR = 52;  // HB =0.8~5HZ (48~300bpm), so 0.8/0.01526=52.42 ~=52
   upper_limit_HR = 328; // 5/0.01526 = 327.68 ~=328
-  size_HB = upper_limit_HR - lower_limit_HR + 1;
+  size_HR_data = upper_limit_HR - lower_limit_HR + 1;
 
   for (index_freq = 0; index_freq < upper_limit_RR; index_freq++)
   {
     SpctmValue_part1[index_freq] = SpctmValue_I_chl[index_freq];
   }
 
-  for (index_freq = 0; index_freq < size_HB; index_freq++)
+  for (index_freq = 0; index_freq < size_HR_data; index_freq++)
   {
     SpctmValue_part2[index_freq] = SpctmValue_I_chl[index_freq + lower_limit_HR];
   }
 
   int index_RR = FindMax(SpctmValue_part1, upper_limit_RR);
-  int index_HB = FindMax(SpctmValue_part2, size_HB);
+  int index_HR = FindMax(SpctmValue_part2, size_HR_data);
+
+  hrrr_I_chl.RespRate = (int)(SpctmFreq[index_RR] * 60);
+  hrrr_I_chl.HrtRate = (int)(SpctmFreq[index_HR + lower_limit_HR] * 60);
+
+  // printf("i_HR:%d,i_RR:%d\n", index_RR, index_HR);
+  printf("HR:%d, RR:%d\n", hrrr_I_chl.HrtRate, hrrr_I_chl.RespRate);
 
   for (index_freq = 0; index_freq < SIZE_DATA; index_freq++)
     // for (int index_freq = 0; index_freq < 100; index_freq++)
