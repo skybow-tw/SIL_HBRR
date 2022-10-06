@@ -33,7 +33,6 @@ double Volt_I[SIZE_DATA], Volt_Q[SIZE_DATA];
 
 //=====Human vital signs analysis algorithm parameters=====
 int index_RR, index_HR;
-double SpctmValue_part1[SIZE_DATA], SpctmValue_part2[SIZE_DATA]; // dynamic allocation?
 
 int lower_limit_RR, upper_limit_RR, lower_limit_HR, upper_limit_HR;
 int size_RR_data, size_HR_data;
@@ -236,32 +235,47 @@ int main(int argc, char *argv[])
   printf("Complete! It costs %f seconds! \n", (END - START) / CLOCKS_PER_SEC);
 
   // fs/N=0.01526
-  lower_limit_RR = 7;  // RR=0.1~0.5HZ(6~30 pm), so 0.1/0.01526=6.553 ~=7
+  lower_limit_RR = 3;  // RR=0.05~0.5HZ(3~30 pm), so 0.05/0.01526=3.276 ~=3
   upper_limit_RR = 33; // 0.5/0.01526=32.765 ~=33
   size_RR_data = upper_limit_RR - lower_limit_RR + 1;
+  double *SpctmValue_RR_I_chl = calloc(size_RR_data, sizeof(double));
+  double *SpctmValue_RR_Q_chl = calloc(size_RR_data, sizeof(double));
 
   lower_limit_HR = 52;  // HB =0.8~4HZ (48~240bpm), so 0.8/0.01526=52.42 ~=52
   upper_limit_HR = 328; // 4/0.01526 = 262.12 ~=262
   size_HR_data = upper_limit_HR - lower_limit_HR + 1;
+  double *SpctmValue_HR_I_chl = calloc(size_HR_data, sizeof(double));
+  double *SpctmValue_HR_Q_chl = calloc(size_HR_data, sizeof(double));
 
   for (index_freq = 0; index_freq < size_RR_data; index_freq++)
   {
-    SpctmValue_part1[index_freq] = SpctmValue_I_chl[index_freq + lower_limit_RR];
+    SpctmValue_RR_I_chl[index_freq] = SpctmValue_I_chl[index_freq + lower_limit_RR];
+    SpctmValue_RR_Q_chl[index_freq] = SpctmValue_Q_chl[index_freq + lower_limit_RR];
   }
 
   for (index_freq = 0; index_freq < size_HR_data; index_freq++)
   {
-    SpctmValue_part2[index_freq] = SpctmValue_I_chl[index_freq + lower_limit_HR];
+    SpctmValue_HR_I_chl[index_freq] = SpctmValue_I_chl[index_freq + lower_limit_HR];
+    SpctmValue_HR_Q_chl[index_freq] = SpctmValue_Q_chl[index_freq + lower_limit_HR];
   }
 
-  int index_RR = FindMax(SpctmValue_part1, size_RR_data);
-  int index_HR = FindMax(SpctmValue_part2, size_HR_data);
+  // I channel
+  index_RR = FindMax(SpctmValue_RR_I_chl, size_RR_data);
+  index_HR = FindMax(SpctmValue_HR_I_chl, size_HR_data);
 
   hrrr_I_chl.RespRate = (int)(SpctmFreq[index_RR + lower_limit_RR] * 60);
   hrrr_I_chl.HrtRate = (int)(SpctmFreq[index_HR + lower_limit_HR] * 60);
 
+  // Q channel
+  index_RR = FindMax(SpctmValue_RR_Q_chl, size_RR_data);
+  index_HR = FindMax(SpctmValue_HR_Q_chl, size_HR_data);
+
+  hrrr_Q_chl.RespRate = (int)(SpctmFreq[index_RR + lower_limit_RR] * 60);
+  hrrr_Q_chl.HrtRate = (int)(SpctmFreq[index_HR + lower_limit_HR] * 60);
+
   // printf("i_HR:%d,i_RR:%d\n", index_RR, index_HR);
-  printf("RR:%d,HR:%d\n", hrrr_I_chl.RespRate, hrrr_I_chl.HrtRate);
+  printf("I_chl RR:%d,HR:%d\n", hrrr_I_chl.RespRate, hrrr_I_chl.HrtRate);
+  printf("Q_chl RR:%d,HR:%d\n", hrrr_Q_chl.RespRate, hrrr_Q_chl.HrtRate);
 
   for (index_freq = 0; index_freq < SIZE_DATA; index_freq++)
     // for (int index_freq = 0; index_freq < 100; index_freq++)
