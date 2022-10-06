@@ -35,8 +35,8 @@ double Volt_I[SIZE_DATA], Volt_Q[SIZE_DATA];
 int index_RR, index_HR;
 double SpctmValue_part1[SIZE_DATA], SpctmValue_part2[SIZE_DATA]; // dynamic allocation?
 
-int upper_limit_RR, lower_limit_HR, upper_limit_HR;
-int size_HR_data;
+int lower_limit_RR, upper_limit_RR, lower_limit_HR, upper_limit_HR;
+int size_RR_data, size_HR_data;
 int index_freq;
 vital_t hrrr_I_chl, hrrr_Q_chl;
 
@@ -235,14 +235,18 @@ int main(int argc, char *argv[])
   // Show processing time
   printf("Complete! It costs %f seconds! \n", (END - START) / CLOCKS_PER_SEC);
 
-  upper_limit_RR = 39;  // fs/N=0.01526 ; RR=0~0.6HZ(0~36 pm), so 0.6/0.01526 ~=39
-  lower_limit_HR = 52;  // HB =0.8~5HZ (48~300bpm), so 0.8/0.01526=52.42 ~=52
-  upper_limit_HR = 328; // 5/0.01526 = 327.68 ~=328
+  // fs/N=0.01526
+  lower_limit_RR = 7;  // RR=0.1~0.5HZ(6~30 pm), so 0.1/0.01526=6.553 ~=7
+  upper_limit_RR = 33; // 0.5/0.01526=32.765 ~=33
+  size_RR_data = upper_limit_RR - lower_limit_RR + 1;
+
+  lower_limit_HR = 52;  // HB =0.8~4HZ (48~240bpm), so 0.8/0.01526=52.42 ~=52
+  upper_limit_HR = 328; // 4/0.01526 = 262.12 ~=262
   size_HR_data = upper_limit_HR - lower_limit_HR + 1;
 
-  for (index_freq = 0; index_freq < upper_limit_RR; index_freq++)
+  for (index_freq = 0; index_freq < size_RR_data; index_freq++)
   {
-    SpctmValue_part1[index_freq] = SpctmValue_I_chl[index_freq];
+    SpctmValue_part1[index_freq] = SpctmValue_I_chl[index_freq + lower_limit_RR];
   }
 
   for (index_freq = 0; index_freq < size_HR_data; index_freq++)
