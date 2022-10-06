@@ -226,7 +226,7 @@ int main(int argc, char *argv[])
   hrrr_I_chl.HrtRate = 0;
 
   FFT_SIL(Volt_I, STAGE, fs, SpctmFreq, SpctmValue_I_chl, aryRF, 1);
-  // FFT_SIL(Volt_Q, STAGE, fs, SpctmFreq, SpctmValue_Q_chl, aryRF, 1);
+  FFT_SIL(Volt_Q, STAGE, fs, SpctmFreq, SpctmValue_Q_chl, aryRF, 1);
 
   // Mark end time
   END = clock();
