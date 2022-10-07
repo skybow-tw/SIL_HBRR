@@ -12,10 +12,13 @@
 
 //======FFT parameters====
 // STAGE=15, SIZE_DATA=2^15=32768
-#define SIZE_DATA 32768
-#define STAGE 15
+// #define SIZE_DATA 32768
+#define SIZE_DATA 65536
+#define STAGE 16
 
 double fs = 500.0; // smapling rate (Hz)
+double FFT_resl;
+
 double SpctmValue_I_chl[SIZE_DATA], SpctmValue_Q_chl[SIZE_DATA];
 double W_N[SIZE_DATA];
 double *aryTF = NULL;
@@ -24,12 +27,6 @@ complex_t *aryRF = NULL;
 double SpctmFreq[SIZE_DATA];
 // Input data array (from ADC, only real number)
 double Volt_I[SIZE_DATA], Volt_Q[SIZE_DATA];
-
-// Outpuf DFT Result array (Freq Spectrum)
-// double DFT_I_Re[SIZE_DATA / 2 + 1], DFT_I_Im[SIZE_DATA / 2 + 1];
-// double SpctmValue_I_chl[SIZE_DATA / 2 + 1];
-// double Xp_Odd_Ch1[SIZE_DATA], Xp_Even_Ch1[SIZE_DATA];
-// double Xp_Odd_Ch2[SIZE_DATA], Xp_Even_Ch2[SIZE_DATA];
 
 //=====Human vital signs analysis algorithm parameters=====
 int index_RR, index_HR;
@@ -50,7 +47,7 @@ char arySerialOutMsg[100] = {0}; // Traditional C char array for serial communic
 uint8_t isBufferAvailable = 0;
 uint32_t countDataAcq = 0;
 // uint32_t countWhileLoop = 0;
-uint32_t countDataAcq_Th = 500 * 10;
+// uint32_t countDataAcq_Th = 500 * 10;
 // loop wait time
 int time_message_wait; // milliseconds
 int time_loop_halt;    // milliseconds
@@ -224,6 +221,8 @@ int main(int argc, char *argv[])
 
   hrrr_I_chl.RespRate = 0;
   hrrr_I_chl.HrtRate = 0;
+  hrrr_Q_chl.RespRate = 0;
+  hrrr_Q_chl.HrtRate = 0;
 
   FFT_SIL(Volt_I, STAGE, fs, SpctmFreq, SpctmValue_I_chl, aryRF, 1);
   FFT_SIL(Volt_Q, STAGE, fs, SpctmFreq, SpctmValue_Q_chl, aryRF, 1);
@@ -235,14 +234,15 @@ int main(int argc, char *argv[])
   printf("Complete! It costs %f seconds! \n", (END - START) / CLOCKS_PER_SEC);
 
   // fs/N=0.01526
-  lower_limit_RR = 3;  // RR=0.05~0.5HZ(3~30 pm), so 0.05/0.01526=3.276 ~=3
-  upper_limit_RR = 33; // 0.5/0.01526=32.765 ~=33
+  FFT_resl = fs / SIZE_DATA;
+  lower_limit_RR = 0.05 / FFT_resl; // RR=0.05~0.5HZ(3~30 pm), so 0.05/0.01526=3.276 ~=3
+  upper_limit_RR = 0.5 / FFT_resl;  // 0.5/0.01526=32.765 ~=33
   size_RR_data = upper_limit_RR - lower_limit_RR + 1;
   double *SpctmValue_RR_I_chl = calloc(size_RR_data, sizeof(double));
   double *SpctmValue_RR_Q_chl = calloc(size_RR_data, sizeof(double));
 
-  lower_limit_HR = 52;  // HB =0.8~4HZ (48~240bpm), so 0.8/0.01526=52.42 ~=52
-  upper_limit_HR = 328; // 4/0.01526 = 262.12 ~=262
+  lower_limit_HR = 0.8 / FFT_resl; // HB =0.8~4HZ (48~240bpm), so 0.8/0.01526=52.42 ~=52
+  upper_limit_HR = 4 / FFT_resl;   // 4/0.01526 = 262.12 ~=262
   size_HR_data = upper_limit_HR - lower_limit_HR + 1;
   double *SpctmValue_HR_I_chl = calloc(size_HR_data, sizeof(double));
   double *SpctmValue_HR_Q_chl = calloc(size_HR_data, sizeof(double));
@@ -276,6 +276,10 @@ int main(int argc, char *argv[])
   // printf("i_HR:%d,i_RR:%d\n", index_RR, index_HR);
   printf("I_chl RR:%d,HR:%d\n", hrrr_I_chl.RespRate, hrrr_I_chl.HrtRate);
   printf("Q_chl RR:%d,HR:%d\n", hrrr_Q_chl.RespRate, hrrr_Q_chl.HrtRate);
+  free(SpctmValue_RR_I_chl);
+  free(SpctmValue_RR_Q_chl);
+  free(SpctmValue_HR_I_chl);
+  free(SpctmValue_HR_Q_chl);
 
   for (index_freq = 0; index_freq < SIZE_DATA; index_freq++)
     // for (int index_freq = 0; index_freq < 100; index_freq++)
