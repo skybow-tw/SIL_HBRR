@@ -12,9 +12,10 @@
 
 //======FFT parameters====
 // STAGE=15, SIZE_DATA=2^15=32768
-// #define SIZE_DATA 32768
-#define SIZE_DATA 65536
-#define STAGE 16
+#define SIZE_DATA 32768
+#define STAGE 15
+// #define SIZE_DATA 65536
+// #define STAGE 16
 
 double fs = 500.0; // smapling rate (Hz)
 double FFT_resl;
@@ -219,12 +220,12 @@ int main(int argc, char *argv[])
   // Mark start time
   START = clock();
 
-  hrrr_I_chl.RespRate = 0;
-  hrrr_I_chl.HrtRate = 0;
+  // hrrr_I_chl.RespRate = 0;
+  // hrrr_I_chl.HrtRate = 0;
   hrrr_Q_chl.RespRate = 0;
   hrrr_Q_chl.HrtRate = 0;
 
-  FFT_SIL(Volt_I, STAGE, fs, SpctmFreq, SpctmValue_I_chl, aryRF, 1);
+  // FFT_SIL(Volt_I, STAGE, fs, SpctmFreq, SpctmValue_I_chl, aryRF, 1);
   FFT_SIL(Volt_Q, STAGE, fs, SpctmFreq, SpctmValue_Q_chl, aryRF, 1);
 
   // Mark end time
@@ -238,34 +239,35 @@ int main(int argc, char *argv[])
   lower_limit_RR = 0.05 / FFT_resl; // RR=0.05~0.5HZ(3~30 pm), so 0.05/0.01526=3.276 ~=3
   upper_limit_RR = 0.5 / FFT_resl;  // 0.5/0.01526=32.765 ~=33
   size_RR_data = upper_limit_RR - lower_limit_RR + 1;
-  double *SpctmValue_RR_I_chl = calloc(size_RR_data, sizeof(double));
+  // double *SpctmValue_RR_I_chl = calloc(size_RR_data, sizeof(double));
   double *SpctmValue_RR_Q_chl = calloc(size_RR_data, sizeof(double));
 
   lower_limit_HR = 0.8 / FFT_resl; // HB =0.8~4HZ (48~240bpm), so 0.8/0.01526=52.42 ~=52
   upper_limit_HR = 4 / FFT_resl;   // 4/0.01526 = 262.12 ~=262
   size_HR_data = upper_limit_HR - lower_limit_HR + 1;
-  double *SpctmValue_HR_I_chl = calloc(size_HR_data, sizeof(double));
+  // double *SpctmValue_HR_I_chl = calloc(size_HR_data, sizeof(double));
   double *SpctmValue_HR_Q_chl = calloc(size_HR_data, sizeof(double));
 
   for (index_freq = 0; index_freq < size_RR_data; index_freq++)
   {
-    SpctmValue_RR_I_chl[index_freq] = SpctmValue_I_chl[index_freq + lower_limit_RR];
+    // SpctmValue_RR_I_chl[index_freq] = SpctmValue_I_chl[index_freq + lower_limit_RR];
     SpctmValue_RR_Q_chl[index_freq] = SpctmValue_Q_chl[index_freq + lower_limit_RR];
   }
 
   for (index_freq = 0; index_freq < size_HR_data; index_freq++)
   {
-    SpctmValue_HR_I_chl[index_freq] = SpctmValue_I_chl[index_freq + lower_limit_HR];
+    // SpctmValue_HR_I_chl[index_freq] = SpctmValue_I_chl[index_freq + lower_limit_HR];
     SpctmValue_HR_Q_chl[index_freq] = SpctmValue_Q_chl[index_freq + lower_limit_HR];
   }
 
   // I channel
+  /*
   index_RR = FindMax(SpctmValue_RR_I_chl, size_RR_data);
   index_HR = FindMax(SpctmValue_HR_I_chl, size_HR_data);
 
   hrrr_I_chl.RespRate = (int)(SpctmFreq[index_RR + lower_limit_RR] * 60);
   hrrr_I_chl.HrtRate = (int)(SpctmFreq[index_HR + lower_limit_HR] * 60);
-
+*/
   // Q channel
   index_RR = FindMax(SpctmValue_RR_Q_chl, size_RR_data);
   index_HR = FindMax(SpctmValue_HR_Q_chl, size_HR_data);
@@ -273,15 +275,14 @@ int main(int argc, char *argv[])
   hrrr_Q_chl.RespRate = (int)(SpctmFreq[index_RR + lower_limit_RR] * 60);
   hrrr_Q_chl.HrtRate = (int)(SpctmFreq[index_HR + lower_limit_HR] * 60);
 
-  // printf("i_HR:%d,i_RR:%d\n", index_RR, index_HR);
-  printf("I_chl RR:%d,HR:%d\n", hrrr_I_chl.RespRate, hrrr_I_chl.HrtRate);
+  // printf("I_chl RR:%d,HR:%d\n", hrrr_I_chl.RespRate, hrrr_I_chl.HrtRate);
   printf("Q_chl RR:%d,HR:%d\n", hrrr_Q_chl.RespRate, hrrr_Q_chl.HrtRate);
-  free(SpctmValue_RR_I_chl);
+  // free(SpctmValue_RR_I_chl);
   free(SpctmValue_RR_Q_chl);
-  free(SpctmValue_HR_I_chl);
+  // free(SpctmValue_HR_I_chl);
   free(SpctmValue_HR_Q_chl);
 
-  for (index_freq = 0; index_freq < SIZE_DATA; index_freq++)
+  for (index_freq = 0; index_freq < SIZE_DATA / 2; index_freq++)
     // for (int index_freq = 0; index_freq < 100; index_freq++)
     fprintf(pFile_DFT, "%d,%6.4f,%6.3f,%6.3f\n", index_freq, SpctmFreq[index_freq], SpctmValue_I_chl[index_freq], SpctmValue_Q_chl[index_freq]);
 
