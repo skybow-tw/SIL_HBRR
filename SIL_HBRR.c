@@ -14,8 +14,11 @@
 // STAGE=15, SIZE_DATA=2^15=32768
 // #define SIZE_DATA 2048
 // #define STAGE 11
+// #define SIZE_DATA 16384
+// #define STAGE 14
 #define SIZE_DATA 32768
 #define STAGE 15
+
 // #define SIZE_DATA 65536
 // #define STAGE 16
 uint64_t max_time;
@@ -124,6 +127,7 @@ int main(int argc, char *argv[])
   pFile_ADC = fopen(strAry_filename_rawdata, "w");
   pFile_FFT = fopen(strary_filename_FFT, "w");
   pFile_HRRR = fopen(strary_filename_HRRR, "w");
+  fprintf(pFile_HRRR, "%s,%s,%s,%s,%s\n", "NUM", "I_RR", "I_HR", "Q_RR", "Q_HR");
 
   // pigpio.h initializing Function
   if (gpioInitialise() < 0)
@@ -203,19 +207,20 @@ int main(int argc, char *argv[])
   // if the newest 500 point in the circular buffer had been update?
   // then it would do the FFT and HB/RR analysis again
 
+  // aryTF = GenTwiddleFactor(SIZE_DATA);
   aryRF = GenRF(STAGE);
 
   // =====Initialize temp variable for FFT=====
 
   FFT_resl = fs / SIZE_DATA;        // fs/N=0.01526
-  lower_limit_RR = 0.05 / FFT_resl; // RR=0.05~0.5HZ(3~30 pm), so 0.05/0.01526=3.276 ~=3
-  upper_limit_RR = 0.5 / FFT_resl;  // 0.5/0.01526=32.765 ~=33
+  lower_limit_RR = 0.06 / FFT_resl; // RR=0.05~0.5HZ(3~30 pm), so 0.05/0.01526=3.276 ~=3
+  upper_limit_RR = 0.4 / FFT_resl;  // 0.5/0.01526=32.765 ~=33
   size_RR_data = upper_limit_RR - lower_limit_RR + 1;
   double *SpctmValue_RR_I_chl = calloc(size_RR_data, sizeof(double));
   double *SpctmValue_RR_Q_chl = calloc(size_RR_data, sizeof(double));
 
-  lower_limit_HR = 0.8 / FFT_resl; // HB =0.8~4HZ (48~240bpm), so 0.8/0.01526=52.42 ~=52
-  upper_limit_HR = 4 / FFT_resl;   // 4/0.01526 = 262.12 ~=262
+  lower_limit_HR = 1 / FFT_resl; // HB =0.8~4HZ (48~240bpm), so 0.8/0.01526=52.42 ~=52
+  upper_limit_HR = 2 / FFT_resl; // 4/0.01526 = 262.12 ~=262
   size_HR_data = upper_limit_HR - lower_limit_HR + 1;
   double *SpctmValue_HR_I_chl = calloc(size_HR_data, sizeof(double));
   double *SpctmValue_HR_Q_chl = calloc(size_HR_data, sizeof(double));
@@ -250,20 +255,22 @@ int main(int argc, char *argv[])
         // Mark start time
         START = clock();
 
-        // hrrr_I_chl.RespRate = 0;
-        // hrrr_I_chl.HrtRate = 0;
+        hrrr_I_chl.RespRate = 0;
+        hrrr_I_chl.HrtRate = 0;
         hrrr_Q_chl.RespRate = 0;
         hrrr_Q_chl.HrtRate = 0;
 
+        // DFT(Volt_I, SIZE_DATA, fs, SpctmFreq, SpctmValue_I_chl, aryTF, 1);
+
         // FFT for SIL HB/RR detection
-        // FFT_SIL(Volt_I, STAGE, fs, SpctmFreq, SpctmValue_I_chl, aryRF, 1);
+        FFT_SIL(Volt_I, STAGE, fs, SpctmFreq, SpctmValue_I_chl, aryRF, 1);
         FFT_SIL(Volt_Q, STAGE, fs, SpctmFreq, SpctmValue_Q_chl, aryRF, 1);
 
         // Mark end time
         END = clock();
 
         // Show processing time
-        printf("FFT costs %6.3f ms! \n", 1000 * (END - START) / CLOCKS_PER_SEC);
+        printf("FFT costs %6.3f s! \n", (END - START) / CLOCKS_PER_SEC);
 
         for (index_freq = 0; index_freq < size_RR_data; index_freq++)
         {
@@ -282,11 +289,11 @@ int main(int argc, char *argv[])
         // index_RR = FindMax(SpctmValue_I_chl+index_RR, size_RR_data);
         // index_HR = FindMax(SpctmValue_I_chl+index_HR, size_HR_data);
 
-        // index_RR = FindMax(SpctmValue_RR_I_chl, size_RR_data);
-        // index_HR = FindMax(SpctmValue_HR_I_chl, size_HR_data);
+        index_RR = FindMax(SpctmValue_RR_I_chl, size_RR_data);
+        index_HR = FindMax(SpctmValue_HR_I_chl, size_HR_data);
 
-        // hrrr_I_chl.RespRate = (int)(SpctmFreq[index_RR + lower_limit_RR] * 60);
-        // hrrr_I_chl.HrtRate = (int)(SpctmFreq[index_HR + lower_limit_HR] * 60);
+        hrrr_I_chl.RespRate = (int)(SpctmFreq[index_RR + lower_limit_RR] * 60);
+        hrrr_I_chl.HrtRate = (int)(SpctmFreq[index_HR + lower_limit_HR] * 60);
 
         // Q channel
         index_RR = FindMax(SpctmValue_RR_Q_chl, size_RR_data);
@@ -295,9 +302,10 @@ int main(int argc, char *argv[])
         hrrr_Q_chl.RespRate = (int)(SpctmFreq[index_RR + lower_limit_RR] * 60);
         hrrr_Q_chl.HrtRate = (int)(SpctmFreq[index_HR + lower_limit_HR] * 60);
 
-        // printf("I_chl RR:%d,HR:%d\n", hrrr_I_chl.RespRate, hrrr_I_chl.HrtRate);
+        printf("I_chl RR:%d,HR:%d\n", hrrr_I_chl.RespRate, hrrr_I_chl.HrtRate);
         printf("Q_chl RR:%d,HR:%d\n", hrrr_Q_chl.RespRate, hrrr_Q_chl.HrtRate);
-        fprintf(pFile_HRRR, "%d,%d,%d\n", num_FFT_exec, hrrr_Q_chl.RespRate, hrrr_Q_chl.HrtRate);
+        fprintf(pFile_HRRR, "%d,%d,%d,%d,%d\n", num_FFT_exec, hrrr_I_chl.RespRate, hrrr_I_chl.HrtRate, hrrr_Q_chl.RespRate, hrrr_Q_chl.HrtRate);
+        // fprintf(pFile_HRRR, "%d,%d,%d\n", num_FFT_exec, hrrr_Q_chl.RespRate, hrrr_Q_chl.HrtRate);
 
         // Output data to csv file
         for (index_freq = 0; index_freq < SIZE_DATA / 2; index_freq++)
@@ -319,7 +327,6 @@ int main(int argc, char *argv[])
           memset(SpctmFreq, 0, SIZE_DATA);
           memset(SpctmValue_I_chl, 0, SIZE_DATA);
           memset(SpctmValue_Q_chl, 0, SIZE_DATA);
-          // SpctmValue_I_chl,
         }
         // close file reference
         // fclose(pFile_ADC);
