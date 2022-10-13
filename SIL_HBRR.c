@@ -286,14 +286,16 @@ int main(int argc, char *argv[])
 
         // I channel
         // Mtehod2: use pointer incrementation!
-        // index_RR = FindMax(SpctmValue_I_chl+index_RR, size_RR_data);
-        // index_HR = FindMax(SpctmValue_I_chl+index_HR, size_HR_data);
-
-        index_RR = FindMax(SpctmValue_RR_I_chl, size_RR_data);
-        index_HR = FindMax(SpctmValue_HR_I_chl, size_HR_data);
-
-        hrrr_I_chl.RespRate = (int)(SpctmFreq[index_RR + lower_limit_RR] * 60);
-        hrrr_I_chl.HrtRate = (int)(SpctmFreq[index_HR + lower_limit_HR] * 60);
+        index_RR = FindMax(SpctmValue_I_chl + lower_limit_RR, size_RR_data);
+        index_HR = FindMax(SpctmValue_I_chl + lower_limit_HR, size_HR_data);
+        /*
+                index_RR = FindMax(SpctmValue_RR_I_chl, size_RR_data);
+                index_HR = FindMax(SpctmValue_HR_I_chl, size_HR_data);
+        */
+        // hrrr_I_chl.RespRate = (int)(SpctmFreq[index_RR + lower_limit_RR] * 60);
+        // hrrr_I_chl.HrtRate = (int)(SpctmFreq[index_HR + lower_limit_HR] * 60);
+        hrrr_I_chl.RespRate = round((SpctmFreq[index_RR + lower_limit_RR] * 60));
+        hrrr_I_chl.HrtRate = round((SpctmFreq[index_HR + lower_limit_HR] * 60));
 
         // Q channel
         index_RR = FindMax(SpctmValue_RR_Q_chl, size_RR_data);
