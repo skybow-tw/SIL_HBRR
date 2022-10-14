@@ -42,7 +42,7 @@ int index_RR, index_HR;
 int lower_limit_RR, upper_limit_RR, lower_limit_HR, upper_limit_HR;
 int size_RR_data, size_HR_data;
 int index_freq;
-vital_t hrrr_I_chl, hrrr_Q_chl;
+vital_t HRRR_I, HRRR_Q;
 
 //===pigpio parameters=====
 int status_ISR_Register;
@@ -75,8 +75,6 @@ time_t t1;       //  Declare a "time_t" type variable
 struct tm *nPtr; // Declare a "struct tm" type pointer
 
 void BufferClean(char *);
-int compare_double(const void *arg1, const void *arg2);
-int compare_Spctm(const void *arg1, const void *arg2);
 int FindMax(double *array, uint32_t size);
 
 //================ISR for pigpio=======================
@@ -101,6 +99,10 @@ void myInterrupt0(int gpio, int level, uint32_t tick)
     {
       printf("%2d\n", countDataAcq / 500); // To be replaced by RPi serial library
     }
+    // if ((countDataAcq % 250) == 0)
+    // {
+    //   printf("Volt_I:%f, Volt_Q:%f\n", Volt_I[countDataAcq], Volt_Q[countDataAcq]);
+    // }
 
     // printf("%d\n", ++countDataAcq); //To be replaced by RPi serial library
 
@@ -115,6 +117,18 @@ void myInterrupt0(int gpio, int level, uint32_t tick)
 // /=================================================================================
 int main(int argc, char *argv[])
 {
+  // printf("argc=%d,", argc);
+  // printf("argv=%s,%s,%s\n", argv[0], argv[1], argv[2]);
+
+  // When user execute the program by typing "sudo ./SIL_HBRR 3 77",
+  // the first argument argv[0] is program 's name "./SIL_HBRR",
+  // and the second argument argv[1] is "3"
+  // and the third argument argv[2] is "77" ,and so on...
+
+  if (argc == 2)
+    max_time = atoi(argv[1]);
+  else
+    max_time = 3;
 
   t1 = time(NULL);
   nPtr = localtime(&t1);
@@ -207,35 +221,33 @@ int main(int argc, char *argv[])
   // if the newest 500 point in the circular buffer had been update?
   // then it would do the FFT and HB/RR analysis again
 
+  // for DFT
+  // This TF should be calculated only once in the beginning
   // aryTF = GenTwiddleFactor(SIZE_DATA);
+
   aryRF = GenRF(STAGE);
 
   // =====Initialize temp variable for FFT=====
 
   FFT_resl = fs / SIZE_DATA;        // fs/N=0.01526
-  lower_limit_RR = 0.06 / FFT_resl; // RR=0.05~0.5HZ(3~30 pm), so 0.05/0.01526=3.276 ~=3
-  upper_limit_RR = 0.4 / FFT_resl;  // 0.5/0.01526=32.765 ~=33
+  lower_limit_RR = 0.08 / FFT_resl; // RR=0.08~0.7HZ(4.8~42 pm), so 0.08/0.01526=5.24 ~=5
+  upper_limit_RR = 0.7 / FFT_resl;  // 0.7/0.01526=45.8752 ~=46
   size_RR_data = upper_limit_RR - lower_limit_RR + 1;
-  double *SpctmValue_RR_I_chl = calloc(size_RR_data, sizeof(double));
-  double *SpctmValue_RR_Q_chl = calloc(size_RR_data, sizeof(double));
 
-  lower_limit_HR = 1 / FFT_resl; // HB =0.8~4HZ (48~240bpm), so 0.8/0.01526=52.42 ~=52
-  upper_limit_HR = 2 / FFT_resl; // 4/0.01526 = 262.12 ~=262
+  lower_limit_HR = 1 / FFT_resl; // HB =1~4HZ (60~240bpm), so 1/0.01526=65.536 ~=66
+  upper_limit_HR = 4 / FFT_resl; // 4/0.01526 = 262.12 ~=262
   size_HR_data = upper_limit_HR - lower_limit_HR + 1;
-  double *SpctmValue_HR_I_chl = calloc(size_HR_data, sizeof(double));
-  double *SpctmValue_HR_Q_chl = calloc(size_HR_data, sizeof(double));
-
-  max_time = 3;
 
   num_FFT_exec = 0;
 
   // START infinite loop!!!
-  // while (countDataAcq < SIZE_DATA)
+  // while (1)
   while (num_FFT_exec < max_time)
   {
     // Continuously detect GPIO interruption until gathering SIZE_DATA points data from ADC.
     if (countDataAcq >= 1)
     {
+
       if ((countDataAcq % SIZE_DATA) == 0)
       {
 
@@ -255,10 +267,10 @@ int main(int argc, char *argv[])
         // Mark start time
         START = clock();
 
-        hrrr_I_chl.RespRate = 0;
-        hrrr_I_chl.HrtRate = 0;
-        hrrr_Q_chl.RespRate = 0;
-        hrrr_Q_chl.HrtRate = 0;
+        HRRR_I.RespRate = 0;
+        HRRR_I.HrtRate = 0;
+        HRRR_Q.RespRate = 0;
+        HRRR_Q.HrtRate = 0;
 
         // DFT(Volt_I, SIZE_DATA, fs, SpctmFreq, SpctmValue_I_chl, aryTF, 1);
 
@@ -272,42 +284,23 @@ int main(int argc, char *argv[])
         // Show processing time
         printf("FFT costs %6.3f s! \n", (END - START) / CLOCKS_PER_SEC);
 
-        for (index_freq = 0; index_freq < size_RR_data; index_freq++)
-        {
-          // SpctmValue_RR_I_chl[index_freq] = SpctmValue_I_chl[index_freq + lower_limit_RR];
-          SpctmValue_RR_Q_chl[index_freq] = SpctmValue_Q_chl[index_freq + lower_limit_RR];
-        }
-
-        for (index_freq = 0; index_freq < size_HR_data; index_freq++)
-        {
-          // SpctmValue_HR_I_chl[index_freq] = SpctmValue_I_chl[index_freq + lower_limit_HR];
-          SpctmValue_HR_Q_chl[index_freq] = SpctmValue_Q_chl[index_freq + lower_limit_HR];
-        }
-
         // I channel
-        // Mtehod2: use pointer incrementation!
         index_RR = FindMax(SpctmValue_I_chl + lower_limit_RR, size_RR_data);
         index_HR = FindMax(SpctmValue_I_chl + lower_limit_HR, size_HR_data);
-        /*
-                index_RR = FindMax(SpctmValue_RR_I_chl, size_RR_data);
-                index_HR = FindMax(SpctmValue_HR_I_chl, size_HR_data);
-        */
-        // hrrr_I_chl.RespRate = (int)(SpctmFreq[index_RR + lower_limit_RR] * 60);
-        // hrrr_I_chl.HrtRate = (int)(SpctmFreq[index_HR + lower_limit_HR] * 60);
-        hrrr_I_chl.RespRate = round((SpctmFreq[index_RR + lower_limit_RR] * 60));
-        hrrr_I_chl.HrtRate = round((SpctmFreq[index_HR + lower_limit_HR] * 60));
+        HRRR_I.RespRate = round((SpctmFreq[index_RR + lower_limit_RR] * 60));
+        HRRR_I.HrtRate = round((SpctmFreq[index_HR + lower_limit_HR] * 60));
 
         // Q channel
-        index_RR = FindMax(SpctmValue_RR_Q_chl, size_RR_data);
-        index_HR = FindMax(SpctmValue_HR_Q_chl, size_HR_data);
 
-        hrrr_Q_chl.RespRate = (int)(SpctmFreq[index_RR + lower_limit_RR] * 60);
-        hrrr_Q_chl.HrtRate = (int)(SpctmFreq[index_HR + lower_limit_HR] * 60);
+        index_RR = FindMax(SpctmValue_Q_chl + lower_limit_RR, size_RR_data);
+        index_HR = FindMax(SpctmValue_Q_chl + lower_limit_HR, size_HR_data);
+        HRRR_Q.RespRate = round((SpctmFreq[index_RR + lower_limit_RR] * 60));
+        HRRR_Q.HrtRate = round((SpctmFreq[index_HR + lower_limit_HR] * 60));
 
-        printf("I_chl RR:%d,HR:%d\n", hrrr_I_chl.RespRate, hrrr_I_chl.HrtRate);
-        printf("Q_chl RR:%d,HR:%d\n", hrrr_Q_chl.RespRate, hrrr_Q_chl.HrtRate);
-        fprintf(pFile_HRRR, "%d,%d,%d,%d,%d\n", num_FFT_exec, hrrr_I_chl.RespRate, hrrr_I_chl.HrtRate, hrrr_Q_chl.RespRate, hrrr_Q_chl.HrtRate);
-        // fprintf(pFile_HRRR, "%d,%d,%d\n", num_FFT_exec, hrrr_Q_chl.RespRate, hrrr_Q_chl.HrtRate);
+        printf("I_chl RR:%d,HR:%d\n", HRRR_I.RespRate, HRRR_I.HrtRate);
+        printf("Q_chl RR:%d,HR:%d\n", HRRR_Q.RespRate, HRRR_Q.HrtRate);
+        fprintf(pFile_HRRR, "%d,%d,%d,%d,%d\n", num_FFT_exec, HRRR_I.RespRate, HRRR_I.HrtRate, HRRR_Q.RespRate, HRRR_Q.HrtRate);
+        // fprintf(pFile_HRRR, "%d,%d,%d\n", num_FFT_exec, HRRR_Q.RespRate, HRRR_Q.HrtRate);
 
         // Output data to csv file
         for (index_freq = 0; index_freq < SIZE_DATA / 2; index_freq++)
@@ -330,9 +323,7 @@ int main(int argc, char *argv[])
           memset(SpctmValue_I_chl, 0, SIZE_DATA);
           memset(SpctmValue_Q_chl, 0, SIZE_DATA);
         }
-        // close file reference
-        // fclose(pFile_ADC);
-        // fclose(pFile_FFT);
+        // end
       }
     }
   }
@@ -340,11 +331,6 @@ int main(int argc, char *argv[])
   fclose(pFile_ADC);
   fclose(pFile_FFT);
   fclose(pFile_HRRR);
-  // free temp memory
-  free(SpctmValue_RR_I_chl);
-  free(SpctmValue_RR_Q_chl);
-  free(SpctmValue_HR_I_chl);
-  free(SpctmValue_HR_Q_chl);
 
   // Disable interruption at GPIO_0 through calling  "gpioSetISRFunc" function again
   // by passing a NULL function pointer
@@ -354,94 +340,12 @@ int main(int argc, char *argv[])
 
   // calculate processing time
 
-  /* DFT calculation
-  // This TF should be calculated only once in the beginning
-  aryTF = GenTwiddleFactor(SIZE_DATA);
-
+  /*
   // DFT, input I signal=Volt_I,Outpust spectrum=SpctmValue_I_chl
   // Set isRRHB=1 to perform FFT at human RR/HB detection mode
   DFT(Volt_I, SIZE_DATA, fs, SpctmFreq, SpctmValue_I_chl, aryTF, 1);
   DFT(Volt_Q, SIZE_DATA, fs, SpctmFreq, SpctmValue_Q_chl, aryTF, 1);
   */
-
-  /*
-    // Mark start time
-    START = clock();
-
-    hrrr_I_chl.RespRate = 0;
-    hrrr_I_chl.HrtRate = 0;
-    hrrr_Q_chl.RespRate = 0;
-    hrrr_Q_chl.HrtRate = 0;
-
-    // FFT_SIL(Volt_I, STAGE, fs, SpctmFreq, SpctmValue_I_chl, aryRF, 1);
-    FFT_SIL(Volt_Q, STAGE, fs, SpctmFreq, SpctmValue_Q_chl, aryRF, 1);
-
-    // Mark end time
-    END = clock();
-
-    // Show processing time
-    printf("Complete! It costs %f seconds! \n", (END - START) / CLOCKS_PER_SEC);
-
-    // fs/N=0.01526
-    FFT_resl = fs / SIZE_DATA;
-    lower_limit_RR = 0.05 / FFT_resl; // RR=0.05~0.5HZ(3~30 pm), so 0.05/0.01526=3.276 ~=3
-    upper_limit_RR = 0.5 / FFT_resl;  // 0.5/0.01526=32.765 ~=33
-    size_RR_data = upper_limit_RR - lower_limit_RR + 1;
-    // double *SpctmValue_RR_I_chl = calloc(size_RR_data, sizeof(double));
-    double *SpctmValue_RR_Q_chl = calloc(size_RR_data, sizeof(double));
-
-    lower_limit_HR = 0.8 / FFT_resl; // HB =0.8~4HZ (48~240bpm), so 0.8/0.01526=52.42 ~=52
-    upper_limit_HR = 4 / FFT_resl;   // 4/0.01526 = 262.12 ~=262
-    size_HR_data = upper_limit_HR - lower_limit_HR + 1;
-    // double *SpctmValue_HR_I_chl = calloc(size_HR_data, sizeof(double));
-    double *SpctmValue_HR_Q_chl = calloc(size_HR_data, sizeof(double));
-
-    for (index_freq = 0; index_freq < size_RR_data; index_freq++)
-    {
-      // SpctmValue_RR_I_chl[index_freq] = SpctmValue_I_chl[index_freq + lower_limit_RR];
-      SpctmValue_RR_Q_chl[index_freq] = SpctmValue_Q_chl[index_freq + lower_limit_RR];
-    }
-
-    for (index_freq = 0; index_freq < size_HR_data; index_freq++)
-    {
-      // SpctmValue_HR_I_chl[index_freq] = SpctmValue_I_chl[index_freq + lower_limit_HR];
-      SpctmValue_HR_Q_chl[index_freq] = SpctmValue_Q_chl[index_freq + lower_limit_HR];
-    }
-
-    // I channel
-    index_RR = FindMax(SpctmValue_RR_I_chl, size_RR_data);
-    index_HR = FindMax(SpctmValue_HR_I_chl, size_HR_data);
-
-    hrrr_I_chl.RespRate = (int)(SpctmFreq[index_RR + lower_limit_RR] * 60);
-    hrrr_I_chl.HrtRate = (int)(SpctmFreq[index_HR + lower_limit_HR] * 60);
-
-    // Q channel
-    index_RR = FindMax(SpctmValue_RR_Q_chl, size_RR_data);
-    index_HR = FindMax(SpctmValue_HR_Q_chl, size_HR_data);
-
-    hrrr_Q_chl.RespRate = (int)(SpctmFreq[index_RR + lower_limit_RR] * 60);
-    hrrr_Q_chl.HrtRate = (int)(SpctmFreq[index_HR + lower_limit_HR] * 60);
-
-    printf("I_chl RR:%d,HR:%d\n", hrrr_I_chl.RespRate, hrrr_I_chl.HrtRate);
-    printf("Q_chl RR:%d,HR:%d\n", hrrr_Q_chl.RespRate, hrrr_Q_chl.HrtRate);
-    free(SpctmValue_RR_I_chl);
-    free(SpctmValue_RR_Q_chl);
-    free(SpctmValue_HR_I_chl);
-    free(SpctmValue_HR_Q_chl);
-
-    for (index_freq = 0; index_freq < SIZE_DATA / 2; index_freq++)
-      fprintf(pFile_FFT, "%d,%6.4f,%6.3f,%6.3f\n", index_freq, SpctmFreq[index_freq], SpctmValue_I_chl[index_freq], SpctmValue_Q_chl[index_freq]);
-
-    fclose(pFile_ADC);
-    fclose(pFile_FFT);
-    */
-
-  // Quick sort the power spectrum array
-  // int Spctm_index[SIZE_DATA];
-  // qsort(Spctm_index, SIZE_DATA, sizeof(int), compare_Spctm);
-
-  // printf("MAX freq value is %6.4f \n", SpctmValue_I_chl[SIZE_DATA - 1]);
-
   return 0;
 }
 
@@ -455,30 +359,6 @@ void BufferClean(char *CharArray)
     // can't use sizeof?
     CharArray[i] = 0;
   }
-}
-
-int compare_double(const void *arg1, const void *arg2)
-{
-  double ret = *(double *)(arg1) - *(double *)(arg2);
-  if (ret == 0)
-    return 0;
-  else if (ret > 0)
-    return 1;
-  else
-    return -1;
-  // return (*(double *)(arg1) - *(double *)(arg2));//NOT for double variable
-}
-
-int compare_Spctm(const void *arg1, const void *arg2)
-{
-  double ret = *(double *)(arg1) - *(double *)(arg2);
-  if (ret == 0)
-    return 0;
-  else if (ret > 0)
-    return 1;
-  else
-    return -1;
-  // return (*(double *)(arg1) - *(double *)(arg2));//NOT for double variable
 }
 
 int FindMax(double *array, uint32_t size)
