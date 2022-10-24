@@ -69,6 +69,9 @@ FILE *pFile_ADC, *pFile_FFT, *pFile_HRRR;
 char strAry_filename_rawdata[64] = {};
 char strary_filename_FFT[64] = {};
 char strary_filename_HRRR[64] = {};
+//=============Serial UART===========
+int SerialStatus = -1;
+char aryUARTData[100] = {0};
 //===============General purpose Functions Declaration====================
 
 time_t t1;       //  Declare a "time_t" type variable
@@ -92,6 +95,8 @@ void myInterrupt0(int gpio, int level, uint32_t tick)
     ADS131A0x_GetADCData(1, aData_ADC);  // Mode1= Real ADC
     Volt_I[countDataAcq] = aData_ADC[1]; // channel 2
     Volt_Q[countDataAcq] = aData_ADC[2]; // channel 3
+    sprintf(aryUARTData, "@D%6.3f\n", aData_ADC[2]);
+    serWrite(SerialStatus, aryUARTData, 9);
 
     countDataAcq++;
 
@@ -128,7 +133,7 @@ int main(int argc, char *argv[])
   if (argc == 2)
     max_time = atoi(argv[1]);
   else
-    max_time = 3;
+    max_time = 10000;
 
   t1 = time(NULL);
   nPtr = localtime(&t1);
@@ -155,20 +160,88 @@ int main(int argc, char *argv[])
       printf("pigpio initialize success!\n");
   }
 
-  // int SerialStatus = 999;
+    /*
+  int serOpen(char *sertty, unsigned baud, unsigned serFlags)
 
-  // SerialStatus = serOpen("/dev/ttyS0", 9600, 0);
+  This function opens a serial device at a specified baud rate and with specified flags. The device name must start with /dev/tty or /dev/serial.
+  sertty: the serial device to open
+  baud: the baud rate in bits per second, see below
+  serFlags: 0
 
-  // if (SerialStatus >= 0)
-  //   printf("SERIAL open success at handle: %d!\n", SerialStatus);
-  // else
-  //   printf("SERIAL open fail with error: %d!\n", SerialStatus); //-24= PI_NO_HANDLE, -72=PI_SER_OPEN_FAILED
+  Returns a handle (>=0) if OK, otherwise PI_NO_HANDLE, or PI_SER_OPEN_FAILED.
+  The baud rate must be one of 50, 75, 110, 134, 150, 200, 300, 600, 1200, 1800, 2400, 4800, 9600, 19200, 38400, 57600, 115200, or 230400.
+  No flags are currently defined. This parameter should be set to zero.
 
-  // for (int i = 0; i < 5; i++)
+  =====
+  int serClose(unsigned handle)
+
+  This function closes the serial device associated with handle.
+  handle: >=0, as returned by a call to serOpen
+  Returns 0 if OK, otherwise PI_BAD_HANDLE.
+
+  ======
+  int serWriteByte(unsigned handle, unsigned bVal)
+
+  This function writes bVal to the serial port associated with handle.
+  handle: >=0, as returned by a call to serOpen
+  Returns 0 if OK, otherwise PI_BAD_HANDLE, PI_BAD_PARAM, or PI_SER_WRITE_FAILED.
+  ======
+  int serReadByte(unsigned handle)
+
+  This function reads a byte from the serial port associated with handle.
+  handle: >=0, as returned by a call to serOpen
+  Returns the read byte (>=0) if OK, otherwise PI_BAD_HANDLE, PI_SER_READ_NO_DATA, or PI_SER_READ_FAILED.
+
+  If no data is ready PI_SER_READ_NO_DATA is returned.
+
+  ======
+  int serWrite(unsigned handle, char *buf, unsigned count)
+  This function writes count bytes from buf to the the serial port associated with handle.
+
+  handle: >=0, as returned by a call to serOpen
+     buf: the array of bytes to write
+   count: the number of bytes to write
+
+
+  Returns 0 if OK, otherwise PI_BAD_HANDLE, PI_BAD_PARAM, or PI_SER_WRITE_FAILED.
+
+  ======
+  int serRead(unsigned handle, char *buf, unsigned count)
+
+  This function reads up count bytes from the the serial port associated with handle and writes them to buf.
+
+  handle: >=0, as returned by a call to serOpen
+  buf: an array to receive the read data
+  count: the maximum number of bytes to read
+  Returns the number of bytes read (>0=) if OK, otherwise PI_BAD_HANDLE, PI_BAD_PARAM, or PI_SER_READ_NO_DATA.
+  If no data is ready zero is returned.
+
+  ======
+  int serDataAvailable(unsigned handle)
+
+  This function returns the number of bytes available to be read from the device associated with handle.
+  handle: >=0, as returned by a call to serOpen
+  Returns the number of bytes of data available (>=0) if OK, otherwise PI_BAD_HANDLE
+  */
+
+  SerialStatus = serOpen("/dev/ttyAMA1", 115200, 0);
+
+  if (SerialStatus >= 0)
+    printf("SERIAL open success at handle: %d!\n", SerialStatus);
+  else
+    printf("SERIAL open fail with error: %d!\n", SerialStatus); //-24= PI_NO_HANDLE, -72=PI_SER_OPEN_FAILED
+
+  // for (int i = 0; i < 100; i++)
   // {
-  //   serWrite(SerialStatus, "skybow", 7);
-  //   sleep(1);
-  //   printf("write # %d\n", i);
+  //   // sprintf(aryUARTData, "@D%5.3f\n", sin(i));
+  //   sprintf(aryUARTData, "@D%6.3f\n", sin(i / 6.2832));
+
+  //   // serWrite(SerialStatus, "data # \n", 7);
+  //   serWrite(SerialStatus, aryUARTData, 9);
+  //   // delay(100);
+  //   usleep(50000);
+
+  //   // sleep(1);
   // }
   // printf("SERIAL close success at handle: %d!\n", serClose(SerialStatus));
 
@@ -230,12 +303,12 @@ int main(int argc, char *argv[])
   // =====Initialize temp variable for FFT=====
 
   FFT_resl = fs / SIZE_DATA;        // fs/N=0.01526
-  lower_limit_RR = 0.08 / FFT_resl; // RR=0.08~0.7HZ(4.8~42 pm), so 0.08/0.01526=5.24 ~=5
-  upper_limit_RR = 0.7 / FFT_resl;  // 0.7/0.01526=45.8752 ~=46
+  lower_limit_RR = 0.08 / FFT_resl; // RR=0.08~0.7HZ(4.8~42 pm), so 0.08/0.01526=5.24 ~=5th
+  upper_limit_RR = 0.7 / FFT_resl;  // 0.7/0.01526=45.8752 ~=46th
   size_RR_data = upper_limit_RR - lower_limit_RR + 1;
 
-  lower_limit_HR = 1 / FFT_resl; // HB =1~4HZ (60~240bpm), so 1/0.01526=65.536 ~=66
-  upper_limit_HR = 4 / FFT_resl; // 4/0.01526 = 262.12 ~=262
+  lower_limit_HR = 0.9 / FFT_resl; // HB =0.9~3.5HZ (54~210bpm), so 0.9/0.01526=58.98 ~=59th
+  upper_limit_HR = 3.5 / FFT_resl; // 3.5/0.01526 = 229.38 ~=229th
   size_HR_data = upper_limit_HR - lower_limit_HR + 1;
 
   num_FFT_exec = 0;
