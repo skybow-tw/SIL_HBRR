@@ -297,9 +297,9 @@ int main(int argc, char *argv[])
         // FFT_SIL(Volt_Q, FFT_STAGE, fs, SpctmFreq, SpctmValue_Q_chl, aryRF, 1);
 
         // NEW
-        sig_Complex(FFT_SIZE, Volt_I, I_Signal);
-        sig_Complex(FFT_SIZE, Volt_Q, Q_Signal);
-        dbl_to_Complex(FFT_SIZE, Volt_I, Volt_Q, Mod_IQ);
+        dbl_to_cplx(FFT_SIZE, Volt_I, I_Signal);
+        dbl_to_cplx(FFT_SIZE, Volt_Q, Q_Signal);
+        cplx_Demod(FFT_SIZE, Volt_I, Volt_Q, Mod_IQ);
 
         HRRR_I = SIL_get_HRRR(FFT_STAGE, FFT_SIZE, I_Signal, fs, SpctmFreq, SpctmValue_I_chl, aryRF, 1);
         HRRR_Q = SIL_get_HRRR(FFT_STAGE, FFT_SIZE, Q_Signal, fs, SpctmFreq, SpctmValue_Q_chl, aryRF, 1);
