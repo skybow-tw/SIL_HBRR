@@ -95,7 +95,7 @@ void myInterrupt0(int gpio, int level, uint32_t tick)
     ADC_Mod_IQ = sqrt(pow(aData_ADC[1], 2) + pow(aData_ADC[2], 2));
 
     sprintf(aryUARTData, "@DI%6.3f,Q%6.3f,M%6.3f\n", aData_ADC[1], aData_ADC[2], ADC_Mod_IQ);
-    serWrite(SerialStatus, aryUARTData, 9);
+    serWrite(SerialStatus, aryUARTData, 27);
 
     countDataAcq++;
 
@@ -121,7 +121,6 @@ void myInterrupt0(int gpio, int level, uint32_t tick)
 // /=================================================================================
 int main(int argc, char *argv[])
 {
-  // double *SpctmFreq_Mod_IQ = (double *)malloc(sizeof(double) * 32768);
   complex_t I_Signal[FFT_SIZE];
   complex_t Q_Signal[FFT_SIZE];
   complex_t Mod_IQ[FFT_SIZE];
@@ -153,7 +152,7 @@ int main(int argc, char *argv[])
   pFile_HRRR = fopen(strary_filename_HRRR, "w");
 
   // Generate column name for HRRR file
-  fprintf(pFile_HRRR, "%s,%s,%s,%s,%s\n", "NUM", "I_RR", "I_HR", "Q_RR", "Q_HR");
+  fprintf(pFile_HRRR, "%s,%s,%s,%s,%s,%s,%s\n", "NUM", "I_RR", "I_HR", "Q_RR", "Q_HR", "IQ_RR", "IQ_HR");
 
   // pigpio.h initializing Function
   if (gpioInitialise() < 0)
@@ -335,12 +334,13 @@ int main(int argc, char *argv[])
         */
         printf("I_chl RR:%d,HR:%d\n", HRRR_I.RespRate, HRRR_I.HrtRate);
         printf("Q_chl RR:%d,HR:%d\n", HRRR_Q.RespRate, HRRR_Q.HrtRate);
-        fprintf(pFile_HRRR, "%d,%d,%d,%d,%d\n", num_FFT_exec, HRRR_I.RespRate, HRRR_I.HrtRate, HRRR_Q.RespRate, HRRR_Q.HrtRate);
+        printf("Demod RR:%d,HR:%d\n", HRRR_MOD_IQ.RespRate, HRRR_MOD_IQ.HrtRate);
+        fprintf(pFile_HRRR, "%d,%d,%d,%d,%d,%d,%d\n", num_FFT_exec, HRRR_I.RespRate, HRRR_I.HrtRate, HRRR_Q.RespRate, HRRR_Q.HrtRate, HRRR_MOD_IQ.RespRate, HRRR_MOD_IQ.HrtRate);
         // fprintf(pFile_HRRR, "%d,%d,%d\n", num_FFT_exec, HRRR_Q.RespRate, HRRR_Q.HrtRate);
 
         // Output data to csv file
         for (int index_freq = 0; index_freq < FFT_SIZE / 2; index_freq++)
-          fprintf(pFile_FFT, "%d,%6.4f,%6.3f,%6.3f,%6.3f\n", index_freq, SpctmFreq[index_freq], SpctmValue_I_chl[index_freq], SpctmValue_Q_chl[index_freq], SpctmValue_Mod_IQ);
+          fprintf(pFile_FFT, "%d,%6.4f,%6.3f,%6.3f,%6.3f\n", index_freq, SpctmFreq[index_freq], SpctmValue_I_chl[index_freq], SpctmValue_Q_chl[index_freq], SpctmValue_Mod_IQ[index_freq]);
 
         // open new file for next round datalog (rawdata and FFT analysis result)
         if (num_FFT_exec >= 1 && num_FFT_exec < max_time)
@@ -360,6 +360,7 @@ int main(int argc, char *argv[])
           memset(SpctmFreq, 0, FFT_SIZE);
           memset(SpctmValue_I_chl, 0, FFT_SIZE);
           memset(SpctmValue_Q_chl, 0, FFT_SIZE);
+          memset(SpctmValue_Mod_IQ, 0, FFT_SIZE);
         }
         // end
       }
