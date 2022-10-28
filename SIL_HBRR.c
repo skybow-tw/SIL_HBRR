@@ -23,7 +23,6 @@ uint64_t max_time;
 uint16_t num_FFT_exec;
 
 double fs = 500.0; // smapling rate (Hz)
-double FFT_resl;
 
 double SpctmFreq[FFT_SIZE];
 double SpctmValue_I_chl[FFT_SIZE], SpctmValue_Q_chl[FFT_SIZE], SpctmValue_Mod_IQ[FFT_SIZE];
@@ -31,12 +30,12 @@ double SpctmValue_I_chl[FFT_SIZE], SpctmValue_Q_chl[FFT_SIZE], SpctmValue_Mod_IQ
 double *aryTF = NULL;
 complex_t *aryRF = NULL;
 
-//=====Human vital signs analysis algorithm parameters=====
-int index_RR, index_HR;
+// //=====Human vital signs analysis algorithm parameters=====
+// int index_RR, index_HR;
 
-int lower_limit_RR, upper_limit_RR, lower_limit_HR, upper_limit_HR;
-int size_RR_data, size_HR_data;
-int index_freq;
+// int lower_limit_RR, upper_limit_RR, lower_limit_HR, upper_limit_HR;
+// int size_RR_data, size_HR_data;
+// int index_freq;
 vital_t HRRR_I, HRRR_Q, HRRR_MOD_IQ;
 
 //===pigpio parameters=====
@@ -59,7 +58,11 @@ double START, END;     // for calculating processing time
 uint8_t Status_SerialOut; // Flag to start reading (Status_SerialOut:1=>output on;   Status_SerialOut:0=>output off!)
 uint8_t Size_Serial;
 
+// ADC 4-channel current data
 float aData_ADC[4] = {0};
+float ADC_Mod_IQ = 0.0;
+
+// datalog file name
 FILE *pFile_ADC, *pFile_FFT, *pFile_HRRR;
 char strAry_filename_rawdata[64] = {};
 char strary_filename_FFT[64] = {};
@@ -73,7 +76,6 @@ time_t t1;       //  Declare a "time_t" type variable
 struct tm *nPtr; // Declare a "struct tm" type pointer
 
 void BufferClean(char *);
-int FindMax(double *array, uint32_t size);
 
 //================ISR for pigpio=======================
 // NOTE: when RPi GPIO#0 detect Falling Edge, it would trigger ISR,
@@ -90,7 +92,9 @@ void myInterrupt0(int gpio, int level, uint32_t tick)
     ADS131A0x_GetADCData(1, aData_ADC);  // Mode1= Real ADC
     Volt_I[countDataAcq] = aData_ADC[1]; // channel 2
     Volt_Q[countDataAcq] = aData_ADC[2]; // channel 3
-    sprintf(aryUARTData, "@D%6.3f\n", aData_ADC[2]);
+    ADC_Mod_IQ = sqrt(pow(aData_ADC[1], 2) + pow(aData_ADC[2], 2));
+
+    sprintf(aryUARTData, "@DI%6.3f,Q%6.3f,M%6.3f\n", aData_ADC[1], aData_ADC[2], ADC_Mod_IQ);
     serWrite(SerialStatus, aryUARTData, 9);
 
     countDataAcq++;
@@ -110,7 +114,7 @@ void myInterrupt0(int gpio, int level, uint32_t tick)
 
     // CHANGE to "fwrite()"" would be faster if output data total length longer than 5 cahracter, e.g. "56789"=5Bytes,
     // but fwrite use its integer size, i.e. "1"=4Bytes, "56789" still = 4Bytes!
-    fprintf(pFile_ADC, "%6.3f,%6.3f \n", aData_ADC[1], aData_ADC[2]);
+    fprintf(pFile_ADC, "%6.3f,%6.3f,%6.3f\n", aData_ADC[1], aData_ADC[2], ADC_Mod_IQ);
   }
 }
 
@@ -243,14 +247,14 @@ int main(int argc, char *argv[])
 
   // =====Initialize temp variable for FFT=====
 
-  FFT_resl = fs / FFT_SIZE;         // fs/N=0.01526
-  lower_limit_RR = 0.08 / FFT_resl; // RR=0.08~0.7HZ(4.8~42 pm), so 0.08/0.01526=5.24 ~=5th
-  upper_limit_RR = 0.7 / FFT_resl;  // 0.7/0.01526=45.8752 ~=46th
-  size_RR_data = upper_limit_RR - lower_limit_RR + 1;
+  // FFT_resl = fs / FFT_SIZE;         // fs/N=0.01526
+  // lower_limit_RR = 0.08 / FFT_resl; // RR=0.08~0.7HZ(4.8~42 pm), so 0.08/0.01526=5.24 ~=5th
+  // upper_limit_RR = 0.7 / FFT_resl;  // 0.7/0.01526=45.8752 ~=46th
+  // size_RR_data = upper_limit_RR - lower_limit_RR + 1;
 
-  lower_limit_HR = 0.9 / FFT_resl; // HB =0.9~3.5HZ (54~210bpm), so 0.9/0.01526=58.98 ~=59th
-  upper_limit_HR = 3.5 / FFT_resl; // 3.5/0.01526 = 229.38 ~=229th
-  size_HR_data = upper_limit_HR - lower_limit_HR + 1;
+  // lower_limit_HR = 0.9 / FFT_resl; // HB =0.9~3.5HZ (54~210bpm), so 0.9/0.01526=58.98 ~=59th
+  // upper_limit_HR = 3.5 / FFT_resl; // 3.5/0.01526 = 229.38 ~=229th
+  // size_HR_data = upper_limit_HR - lower_limit_HR + 1;
 
   num_FFT_exec = 0;
 
@@ -335,8 +339,8 @@ int main(int argc, char *argv[])
         // fprintf(pFile_HRRR, "%d,%d,%d\n", num_FFT_exec, HRRR_Q.RespRate, HRRR_Q.HrtRate);
 
         // Output data to csv file
-        for (index_freq = 0; index_freq < FFT_SIZE / 2; index_freq++)
-          fprintf(pFile_FFT, "%d,%6.4f,%6.3f,%6.3f\n", index_freq, SpctmFreq[index_freq], SpctmValue_I_chl[index_freq], SpctmValue_Q_chl[index_freq]);
+        for (int index_freq = 0; index_freq < FFT_SIZE / 2; index_freq++)
+          fprintf(pFile_FFT, "%d,%6.4f,%6.3f,%6.3f,%6.3f\n", index_freq, SpctmFreq[index_freq], SpctmValue_I_chl[index_freq], SpctmValue_Q_chl[index_freq], SpctmValue_Mod_IQ);
 
         // open new file for next round datalog (rawdata and FFT analysis result)
         if (num_FFT_exec >= 1 && num_FFT_exec < max_time)
@@ -393,22 +397,4 @@ void BufferClean(char *CharArray)
     // can't use sizeof?
     CharArray[i] = 0;
   }
-}
-
-int FindMax(double *array, uint32_t size)
-{
-  double max = 0.0;
-  unsigned int i, index_max = 0;
-
-  for (i = 0; i < size; i++)
-  {
-    if (array[i] > max)
-    {
-      // If current value is greater than max
-      // value then replace it with max value
-      max = array[i];
-      index_max = i;
-    }
-  }
-  return index_max;
 }
