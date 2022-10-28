@@ -11,30 +11,25 @@
 #define SIZE_SERIAL_BUFFER 10
 
 //======FFT parameters====
-// STAGE=15, SIZE_DATA=2^15=32768
-// #define SIZE_DATA 2048
-// #define STAGE 11
-// #define SIZE_DATA 16384
-// #define STAGE 14
-#define SIZE_DATA 32768
-#define STAGE 15
+// FFT_STAGE=15, FFT_SIZE=2^15=32768
+#define FFT_STAGE 15
+#define FFT_SIZE 32768
+// uint32_t FFT_size = (1u << FFT_STAGE);
 
-// #define SIZE_DATA 65536
-// #define STAGE 16
+// Input data array (from ADC, only real number)
+double Volt_I[FFT_SIZE], Volt_Q[FFT_SIZE];
+
 uint64_t max_time;
 uint16_t num_FFT_exec;
 
 double fs = 500.0; // smapling rate (Hz)
 double FFT_resl;
 
-double SpctmValue_I_chl[SIZE_DATA], SpctmValue_Q_chl[SIZE_DATA];
-double W_N[SIZE_DATA];
+double SpctmFreq[FFT_SIZE];
+double SpctmValue_I_chl[FFT_SIZE], SpctmValue_Q_chl[FFT_SIZE], SpctmValue_Mod_IQ[FFT_SIZE];
+
 double *aryTF = NULL;
 complex_t *aryRF = NULL;
-
-double SpctmFreq[SIZE_DATA];
-// Input data array (from ADC, only real number)
-double Volt_I[SIZE_DATA], Volt_Q[SIZE_DATA];
 
 //=====Human vital signs analysis algorithm parameters=====
 int index_RR, index_HR;
@@ -42,7 +37,7 @@ int index_RR, index_HR;
 int lower_limit_RR, upper_limit_RR, lower_limit_HR, upper_limit_HR;
 int size_RR_data, size_HR_data;
 int index_freq;
-vital_t HRRR_I, HRRR_Q;
+vital_t HRRR_I, HRRR_Q, HRRR_MOD_IQ;
 
 //===pigpio parameters=====
 int status_ISR_Register;
@@ -122,6 +117,11 @@ void myInterrupt0(int gpio, int level, uint32_t tick)
 // /=================================================================================
 int main(int argc, char *argv[])
 {
+  // double *SpctmFreq_Mod_IQ = (double *)malloc(sizeof(double) * 32768);
+  complex_t I_Signal[FFT_SIZE];
+  complex_t Q_Signal[FFT_SIZE];
+  complex_t Mod_IQ[FFT_SIZE];
+
   // printf("argc=%d,", argc);
   // printf("argv=%s,%s,%s\n", argv[0], argv[1], argv[2]);
 
@@ -133,11 +133,12 @@ int main(int argc, char *argv[])
   if (argc == 2)
     max_time = atoi(argv[1]);
   else
-    max_time = 10000;
+    max_time = 30;
 
   t1 = time(NULL);
   nPtr = localtime(&t1);
 
+  // Get current time, and generate "the first" datalog file name
   // Format tm type to string literal
   strftime(strAry_filename_rawdata, 64, "Datalog/%Y_%m%d_%H%M%S_rawdata.csv", nPtr);
   strftime(strary_filename_FFT, 64, "Datalog/%Y_%m%d_%H%M%S_FFT.csv", nPtr);
@@ -146,6 +147,8 @@ int main(int argc, char *argv[])
   pFile_ADC = fopen(strAry_filename_rawdata, "w");
   pFile_FFT = fopen(strary_filename_FFT, "w");
   pFile_HRRR = fopen(strary_filename_HRRR, "w");
+
+  // Generate column name for HRRR file
   fprintf(pFile_HRRR, "%s,%s,%s,%s,%s\n", "NUM", "I_RR", "I_HR", "Q_RR", "Q_HR");
 
   // pigpio.h initializing Function
@@ -160,70 +163,7 @@ int main(int argc, char *argv[])
       printf("pigpio initialize success!\n");
   }
 
-    /*
-  int serOpen(char *sertty, unsigned baud, unsigned serFlags)
-
-  This function opens a serial device at a specified baud rate and with specified flags. The device name must start with /dev/tty or /dev/serial.
-  sertty: the serial device to open
-  baud: the baud rate in bits per second, see below
-  serFlags: 0
-
-  Returns a handle (>=0) if OK, otherwise PI_NO_HANDLE, or PI_SER_OPEN_FAILED.
-  The baud rate must be one of 50, 75, 110, 134, 150, 200, 300, 600, 1200, 1800, 2400, 4800, 9600, 19200, 38400, 57600, 115200, or 230400.
-  No flags are currently defined. This parameter should be set to zero.
-
-  =====
-  int serClose(unsigned handle)
-
-  This function closes the serial device associated with handle.
-  handle: >=0, as returned by a call to serOpen
-  Returns 0 if OK, otherwise PI_BAD_HANDLE.
-
-  ======
-  int serWriteByte(unsigned handle, unsigned bVal)
-
-  This function writes bVal to the serial port associated with handle.
-  handle: >=0, as returned by a call to serOpen
-  Returns 0 if OK, otherwise PI_BAD_HANDLE, PI_BAD_PARAM, or PI_SER_WRITE_FAILED.
-  ======
-  int serReadByte(unsigned handle)
-
-  This function reads a byte from the serial port associated with handle.
-  handle: >=0, as returned by a call to serOpen
-  Returns the read byte (>=0) if OK, otherwise PI_BAD_HANDLE, PI_SER_READ_NO_DATA, or PI_SER_READ_FAILED.
-
-  If no data is ready PI_SER_READ_NO_DATA is returned.
-
-  ======
-  int serWrite(unsigned handle, char *buf, unsigned count)
-  This function writes count bytes from buf to the the serial port associated with handle.
-
-  handle: >=0, as returned by a call to serOpen
-     buf: the array of bytes to write
-   count: the number of bytes to write
-
-
-  Returns 0 if OK, otherwise PI_BAD_HANDLE, PI_BAD_PARAM, or PI_SER_WRITE_FAILED.
-
-  ======
-  int serRead(unsigned handle, char *buf, unsigned count)
-
-  This function reads up count bytes from the the serial port associated with handle and writes them to buf.
-
-  handle: >=0, as returned by a call to serOpen
-  buf: an array to receive the read data
-  count: the maximum number of bytes to read
-  Returns the number of bytes read (>0=) if OK, otherwise PI_BAD_HANDLE, PI_BAD_PARAM, or PI_SER_READ_NO_DATA.
-  If no data is ready zero is returned.
-
-  ======
-  int serDataAvailable(unsigned handle)
-
-  This function returns the number of bytes available to be read from the device associated with handle.
-  handle: >=0, as returned by a call to serOpen
-  Returns the number of bytes of data available (>=0) if OK, otherwise PI_BAD_HANDLE
-  */
-
+  // pigpio library: Open new Com port, and save its handle variable
   SerialStatus = serOpen("/dev/ttyAMA1", 115200, 0);
 
   if (SerialStatus >= 0)
@@ -231,10 +171,11 @@ int main(int argc, char *argv[])
   else
     printf("SERIAL open fail with error: %d!\n", SerialStatus); //-24= PI_NO_HANDLE, -72=PI_SER_OPEN_FAILED
 
-  // for (int i = 0; i < 100; i++)
-  // {
-  //   // sprintf(aryUARTData, "@D%5.3f\n", sin(i));
-  //   sprintf(aryUARTData, "@D%6.3f\n", sin(i / 6.2832));
+  // serial write test
+  //  for (int i = 0; i < 100; i++)
+  //  {
+  //    // sprintf(aryUARTData, "@D%5.3f\n", sin(i));
+  //    sprintf(aryUARTData, "@D%6.3f\n", sin(i / 6.2832));
 
   //   // serWrite(SerialStatus, "data # \n", 7);
   //   serWrite(SerialStatus, aryUARTData, 9);
@@ -296,13 +237,13 @@ int main(int argc, char *argv[])
 
   // for DFT
   // This TF should be calculated only once in the beginning
-  // aryTF = GenTwiddleFactor(SIZE_DATA);
+  // aryTF = GenTwiddleFactor(FFT_SIZE);
 
-  aryRF = GenRF(STAGE);
+  aryRF = GenRF(FFT_STAGE);
 
   // =====Initialize temp variable for FFT=====
 
-  FFT_resl = fs / SIZE_DATA;        // fs/N=0.01526
+  FFT_resl = fs / FFT_SIZE;         // fs/N=0.01526
   lower_limit_RR = 0.08 / FFT_resl; // RR=0.08~0.7HZ(4.8~42 pm), so 0.08/0.01526=5.24 ~=5th
   upper_limit_RR = 0.7 / FFT_resl;  // 0.7/0.01526=45.8752 ~=46th
   size_RR_data = upper_limit_RR - lower_limit_RR + 1;
@@ -317,11 +258,12 @@ int main(int argc, char *argv[])
   // while (1)
   while (num_FFT_exec < max_time)
   {
-    // Continuously detect GPIO interruption until gathering SIZE_DATA points data from ADC.
+    // Continuously detect GPIO interruption until gathering FFT_SIZE points data from ADC.
     if (countDataAcq >= 1)
     {
 
-      if ((countDataAcq % SIZE_DATA) == 0)
+      // Perform FFT only if ADC has collected "enough number" of data points (say, 32768 points)
+      if ((countDataAcq % FFT_SIZE) == 0)
       {
 
         num_FFT_exec++;
@@ -338,50 +280,68 @@ int main(int argc, char *argv[])
         // pFile_FFT = fopen(strary_filename_FFT, "w");
 
         // Mark start time
-        START = clock();
+        // START = clock();
 
         HRRR_I.RespRate = 0;
         HRRR_I.HrtRate = 0;
         HRRR_Q.RespRate = 0;
         HRRR_Q.HrtRate = 0;
+        HRRR_MOD_IQ.RespRate = 0;
+        HRRR_MOD_IQ.HrtRate = 0;
 
-        // DFT(Volt_I, SIZE_DATA, fs, SpctmFreq, SpctmValue_I_chl, aryTF, 1);
+        // DFT(Volt_I, FFT_SIZE, fs, SpctmFreq, SpctmValue_I_chl, aryTF, 1);
 
         // FFT for SIL HB/RR detection
-        FFT_SIL(Volt_I, STAGE, fs, SpctmFreq, SpctmValue_I_chl, aryRF, 1);
-        FFT_SIL(Volt_Q, STAGE, fs, SpctmFreq, SpctmValue_Q_chl, aryRF, 1);
+
+        // FFT_SIL(Volt_I, FFT_STAGE, fs, SpctmFreq, SpctmValue_I_chl, aryRF, 1);
+        // FFT_SIL(Volt_Q, FFT_STAGE, fs, SpctmFreq, SpctmValue_Q_chl, aryRF, 1);
+
+        // NEW
+        sig_Complex(FFT_SIZE, Volt_I, I_Signal);
+        sig_Complex(FFT_SIZE, Volt_Q, Q_Signal);
+        dbl_to_Complex(FFT_SIZE, Volt_I, Volt_Q, Mod_IQ);
+
+        HRRR_I = SIL_get_HRRR(FFT_STAGE, FFT_SIZE, I_Signal, fs, SpctmFreq, SpctmValue_I_chl, aryRF, 1);
+        HRRR_Q = SIL_get_HRRR(FFT_STAGE, FFT_SIZE, Q_Signal, fs, SpctmFreq, SpctmValue_Q_chl, aryRF, 1);
+        HRRR_MOD_IQ = SIL_get_HRRR(FFT_STAGE, FFT_SIZE, Mod_IQ, fs, SpctmFreq, SpctmValue_Mod_IQ, aryRF, 1);
 
         // Mark end time
-        END = clock();
+        // END = clock();
 
         // Show processing time
-        printf("FFT costs %6.3f s! \n", (END - START) / CLOCKS_PER_SEC);
+        // printf("FFT costs %6.3f s! \n", (END - START) / CLOCKS_PER_SEC);
+
+        // TBD: This part should be move to the inside of the FFT function!!!
+        // Find the maximum value in the specific spectrum segment , and assume the value as HR or RR
 
         // I channel
+        /*
         index_RR = FindMax(SpctmValue_I_chl + lower_limit_RR, size_RR_data);
         index_HR = FindMax(SpctmValue_I_chl + lower_limit_HR, size_HR_data);
         HRRR_I.RespRate = round((SpctmFreq[index_RR + lower_limit_RR] * 60));
         HRRR_I.HrtRate = round((SpctmFreq[index_HR + lower_limit_HR] * 60));
+        */
 
         // Q channel
-
+        /*
         index_RR = FindMax(SpctmValue_Q_chl + lower_limit_RR, size_RR_data);
         index_HR = FindMax(SpctmValue_Q_chl + lower_limit_HR, size_HR_data);
         HRRR_Q.RespRate = round((SpctmFreq[index_RR + lower_limit_RR] * 60));
         HRRR_Q.HrtRate = round((SpctmFreq[index_HR + lower_limit_HR] * 60));
-
+        */
         printf("I_chl RR:%d,HR:%d\n", HRRR_I.RespRate, HRRR_I.HrtRate);
         printf("Q_chl RR:%d,HR:%d\n", HRRR_Q.RespRate, HRRR_Q.HrtRate);
         fprintf(pFile_HRRR, "%d,%d,%d,%d,%d\n", num_FFT_exec, HRRR_I.RespRate, HRRR_I.HrtRate, HRRR_Q.RespRate, HRRR_Q.HrtRate);
         // fprintf(pFile_HRRR, "%d,%d,%d\n", num_FFT_exec, HRRR_Q.RespRate, HRRR_Q.HrtRate);
 
         // Output data to csv file
-        for (index_freq = 0; index_freq < SIZE_DATA / 2; index_freq++)
+        for (index_freq = 0; index_freq < FFT_SIZE / 2; index_freq++)
           fprintf(pFile_FFT, "%d,%6.4f,%6.3f,%6.3f\n", index_freq, SpctmFreq[index_freq], SpctmValue_I_chl[index_freq], SpctmValue_Q_chl[index_freq]);
 
-        // open new file
+        // open new file for next round datalog (rawdata and FFT analysis result)
         if (num_FFT_exec >= 1 && num_FFT_exec < max_time)
         {
+          // Get current time, and generate datalog file name
           t1 = time(NULL);
           nPtr = localtime(&t1);
           strftime(strAry_filename_rawdata, 64, "Datalog/%Y_%m%d_%H%M%S_rawdata.csv", nPtr);
@@ -392,9 +352,10 @@ int main(int argc, char *argv[])
           pFile_FFT = fopen(strary_filename_FFT, "w");
           // pFile_HRRR = fopen(strary_filename_HRRR, "w");
 
-          memset(SpctmFreq, 0, SIZE_DATA);
-          memset(SpctmValue_I_chl, 0, SIZE_DATA);
-          memset(SpctmValue_Q_chl, 0, SIZE_DATA);
+          // reset spectrum X-axis and Y-axis datas
+          memset(SpctmFreq, 0, FFT_SIZE);
+          memset(SpctmValue_I_chl, 0, FFT_SIZE);
+          memset(SpctmValue_Q_chl, 0, FFT_SIZE);
         }
         // end
       }
@@ -416,8 +377,8 @@ int main(int argc, char *argv[])
   /*
   // DFT, input I signal=Volt_I,Outpust spectrum=SpctmValue_I_chl
   // Set isRRHB=1 to perform FFT at human RR/HB detection mode
-  DFT(Volt_I, SIZE_DATA, fs, SpctmFreq, SpctmValue_I_chl, aryTF, 1);
-  DFT(Volt_Q, SIZE_DATA, fs, SpctmFreq, SpctmValue_Q_chl, aryTF, 1);
+  DFT(Volt_I, FFT_SIZE, fs, SpctmFreq, SpctmValue_I_chl, aryTF, 1);
+  DFT(Volt_Q, FFT_SIZE, fs, SpctmFreq, SpctmValue_Q_chl, aryTF, 1);
   */
   return 0;
 }
