@@ -19,8 +19,8 @@
 // Input data array (from ADC, only real number)
 double Volt_I[FFT_SIZE], Volt_Q[FFT_SIZE];
 
-uint64_t max_time;
-uint16_t num_FFT_exec;
+uint32_t max_time;
+uint32_t num_FFT_exec = 0;
 
 double fs = 500.0; // smapling rate (Hz)
 
@@ -36,6 +36,10 @@ complex_t *aryRF = NULL;
 // int lower_limit_RR, upper_limit_RR, lower_limit_HR, upper_limit_HR;
 // int size_RR_data, size_HR_data;
 // int index_freq;
+
+int index_freq_max = 197; // resolution= fs/N, max freq= 3Hz, index_max= 3/(fs/N)=3.0/0.01526 = 196.59 ~=197th
+// index_freq_max=FFT_SIZE/2; //normally it's the freq_index of Nyquist frequency = half of fs
+
 vital_t HRRR_I, HRRR_Q, HRRR_MOD_IQ;
 
 //===pigpio parameters=====
@@ -69,7 +73,9 @@ char strary_filename_FFT[64] = {};
 char strary_filename_HRRR[64] = {};
 //=============Serial UART===========
 int SerialStatus = -1;
-char aryUARTData[100] = {0};
+char serial_Data[40] = {0};
+char serial_Msg[40] = {0};
+char serial_Spctm[40] = {0};
 //===============General purpose Functions Declaration====================
 
 time_t t1;       //  Declare a "time_t" type variable
@@ -94,14 +100,24 @@ void myInterrupt0(int gpio, int level, uint32_t tick)
     Volt_Q[countDataAcq] = aData_ADC[2]; // channel 3
     ADC_Mod_IQ = sqrt(pow(aData_ADC[1], 2) + pow(aData_ADC[2], 2));
 
-    sprintf(aryUARTData, "@DI%6.3f,Q%6.3f,M%6.3f\n", aData_ADC[1], aData_ADC[2], ADC_Mod_IQ);
-    serWrite(SerialStatus, aryUARTData, 27);
+    // This IQ-Demod data should be ADC1-avg_1, but the average value avg_1,avg_2 is still unknown
+    // when the data collection procedure has not completed!
+    //  ADC_Mod_IQ = sqrt(pow(aData_ADC[1]-avg_1, 2) + pow(aData_ADC[2]-avg2, 2));
+
+    sprintf(serial_Data, "@D%6.3f,%6.3f,%6.3f\n", aData_ADC[1], aData_ADC[2], ADC_Mod_IQ);
+    serWrite(SerialStatus, serial_Data, strlen(serial_Data) + 1);
+    memset(serial_Data, 0, 40);
 
     countDataAcq++;
 
     if ((countDataAcq % 500) == 0)
     {
-      printf("%2d\n", countDataAcq / 500); // To be replaced by RPi serial library
+      printf("%2d\n", countDataAcq / 500); // To be replaced by progress bar (*****----- 99%)
+
+      // Serial Out
+      sprintf(serial_Msg, "@MRaw#%2d\n", countDataAcq / 500);
+      serWrite(SerialStatus, serial_Msg, strlen(serial_Msg) + 1);
+      memset(serial_Msg, 0, 40);
     }
     // if ((countDataAcq % 250) == 0)
     // {
@@ -136,7 +152,7 @@ int main(int argc, char *argv[])
   if (argc == 2)
     max_time = atoi(argv[1]);
   else
-    max_time = 30;
+    max_time = 300;
 
   t1 = time(NULL);
   nPtr = localtime(&t1);
@@ -152,7 +168,8 @@ int main(int argc, char *argv[])
   pFile_HRRR = fopen(strary_filename_HRRR, "w");
 
   // Generate column name for HRRR file
-  fprintf(pFile_HRRR, "%s,%s,%s,%s,%s,%s,%s\n", "NUM", "I_RR", "I_HR", "Q_RR", "Q_HR", "IQ_RR", "IQ_HR");
+  // fprintf(pFile_HRRR, "%s,%s,%s,%s,%s,%s,%s\n", "NUM", "I_RR", "I_HR", "Q_RR", "Q_HR", "IQ_RR", "IQ_HR");
+  fprintf(pFile_HRRR, "%s,%s,%s\n", "NUM", "IQ_RR", "IQ_HR");
 
   // pigpio.h initializing Function
   if (gpioInitialise() < 0)
@@ -177,11 +194,11 @@ int main(int argc, char *argv[])
   // serial write test
   //  for (int i = 0; i < 100; i++)
   //  {
-  //    // sprintf(aryUARTData, "@D%5.3f\n", sin(i));
-  //    sprintf(aryUARTData, "@D%6.3f\n", sin(i / 6.2832));
+  //    // sprintf(serial_Msg, "@D%5.3f\n", sin(i));
+  //    sprintf(serial_Msg, "@D%6.3f\n", sin(i / 6.2832));
 
   //   // serWrite(SerialStatus, "data # \n", 7);
-  //   serWrite(SerialStatus, aryUARTData, 9);
+  //   serWrite(SerialStatus, serial_Msg, 9);
   //   // delay(100);
   //   usleep(50000);
 
@@ -255,115 +272,126 @@ int main(int argc, char *argv[])
   // upper_limit_HR = 3.5 / FFT_resl; // 3.5/0.01526 = 229.38 ~=229th
   // size_HR_data = upper_limit_HR - lower_limit_HR + 1;
 
-  num_FFT_exec = 0;
+  // num_FFT_exec = 0;
 
   // START infinite loop!!!
   // while (1)
   while (num_FFT_exec < max_time)
   {
     // Continuously detect GPIO interruption until gathering FFT_SIZE points data from ADC.
-    if (countDataAcq >= 1)
+    if (countDataAcq >= 1 && ((countDataAcq % FFT_SIZE) == 0))
     {
 
       // Perform FFT only if ADC has collected "enough number" of data points (say, 32768 points)
-      if ((countDataAcq % FFT_SIZE) == 0)
+      // if ((countDataAcq % FFT_SIZE) == 0)
+      // {
+
+      // increse the number of FFT execution by 1
+      num_FFT_exec++;
+
+      // reset count number of ADC data acquisition
+      countDataAcq = 0;
+
+      // t1 = time(NULL);
+      // nPtr = localtime(&t1);
+
+      // // Format tm type to string literal
+      // strftime(strAry_filename_rawdata, 64, "Datalog/%Y_%m%d_%H%M%S_rawdata.csv", nPtr);
+      // strftime(strary_filename_FFT, 64, "Datalog/%Y_%m%d_%H%M%S_DFT.csv", nPtr);
+
+      // pFile_ADC = fopen(strAry_filename_rawdata, "w");
+      // pFile_FFT = fopen(strary_filename_FFT, "w");
+
+      // Mark start time
+      // START = clock();
+
+      HRRR_I.RespRate = 0;
+      HRRR_I.HrtRate = 0;
+      HRRR_Q.RespRate = 0;
+      HRRR_Q.HrtRate = 0;
+      HRRR_MOD_IQ.RespRate = 0;
+      HRRR_MOD_IQ.HrtRate = 0;
+
+      // Convert raw data to complex-number
+      // dbl_to_cplx(FFT_SIZE, Volt_I, I_Signal);
+      // dbl_to_cplx(FFT_SIZE, Volt_Q, Q_Signal);
+      cplx_Demod(FFT_SIZE, Volt_I, Volt_Q, Mod_IQ);
+
+      // HRRR_I = SIL_get_HRRR(FFT_STAGE, FFT_SIZE, I_Signal, fs, SpctmFreq, SpctmValue_I_chl, aryRF, 1);
+      // HRRR_Q = SIL_get_HRRR(FFT_STAGE, FFT_SIZE, Q_Signal, fs, SpctmFreq, SpctmValue_Q_chl, aryRF, 1);
+      HRRR_MOD_IQ = SIL_get_HRRR(FFT_STAGE, FFT_SIZE, Mod_IQ, fs, SpctmFreq, SpctmValue_Mod_IQ, aryRF, 1);
+
+      // Mark end time
+      // END = clock();
+
+      // Show processing time
+      // printf("FFT costs %6.3f s! \n", (END - START) / CLOCKS_PER_SEC);
+
+      // printf("I_chl RR:%d,HR:%d\n", HRRR_I.RespRate, HRRR_I.HrtRate);
+      // printf("Q_chl RR:%d,HR:%d\n", HRRR_Q.RespRate, HRRR_Q.HrtRate);
+      printf("Demod RR:%d,HR:%d\n", HRRR_MOD_IQ.RespRate, HRRR_MOD_IQ.HrtRate);
+
+      sprintf(serial_Data, "@R%d,%d\n", HRRR_MOD_IQ.RespRate, HRRR_MOD_IQ.HrtRate);
+      serWrite(SerialStatus, serial_Data, strlen(serial_Data) + 1);
+      memset(serial_Data, 0, 40);
+
+      // fprintf(pFile_HRRR, "%d,%d,%d,%d,%d,%d,%d\n", num_FFT_exec, HRRR_I.RespRate, HRRR_I.HrtRate, HRRR_Q.RespRate, HRRR_Q.HrtRate, HRRR_MOD_IQ.RespRate, HRRR_MOD_IQ.HrtRate);
+      fprintf(pFile_HRRR, "%d,%d,%d\n", num_FFT_exec, HRRR_I.RespRate, HRRR_I.HrtRate, HRRR_Q.RespRate, HRRR_Q.HrtRate, HRRR_MOD_IQ.RespRate, HRRR_MOD_IQ.HrtRate);
+      // fprintf(pFile_HRRR, "%d,%d,%d\n", num_FFT_exec, HRRR_Q.RespRate, HRRR_Q.HrtRate);
+
+      // Output data to csv file
+      // Serial output the spectrum
+
+      for (int index_freq = 0; index_freq < index_freq_max; index_freq++)
       {
-
-        num_FFT_exec++;
-        countDataAcq = 0;
-
-        // t1 = time(NULL);
-        // nPtr = localtime(&t1);
-
-        // // Format tm type to string literal
-        // strftime(strAry_filename_rawdata, 64, "Datalog/%Y_%m%d_%H%M%S_rawdata.csv", nPtr);
-        // strftime(strary_filename_FFT, 64, "Datalog/%Y_%m%d_%H%M%S_DFT.csv", nPtr);
-
-        // pFile_ADC = fopen(strAry_filename_rawdata, "w");
-        // pFile_FFT = fopen(strary_filename_FFT, "w");
-
-        // Mark start time
-        // START = clock();
-
-        HRRR_I.RespRate = 0;
-        HRRR_I.HrtRate = 0;
-        HRRR_Q.RespRate = 0;
-        HRRR_Q.HrtRate = 0;
-        HRRR_MOD_IQ.RespRate = 0;
-        HRRR_MOD_IQ.HrtRate = 0;
-
-        // DFT(Volt_I, FFT_SIZE, fs, SpctmFreq, SpctmValue_I_chl, aryTF, 1);
-
-        // FFT for SIL HB/RR detection
-
-        // FFT_SIL(Volt_I, FFT_STAGE, fs, SpctmFreq, SpctmValue_I_chl, aryRF, 1);
-        // FFT_SIL(Volt_Q, FFT_STAGE, fs, SpctmFreq, SpctmValue_Q_chl, aryRF, 1);
-
-        // NEW
-        dbl_to_cplx(FFT_SIZE, Volt_I, I_Signal);
-        dbl_to_cplx(FFT_SIZE, Volt_Q, Q_Signal);
-        cplx_Demod(FFT_SIZE, Volt_I, Volt_Q, Mod_IQ);
-
-        HRRR_I = SIL_get_HRRR(FFT_STAGE, FFT_SIZE, I_Signal, fs, SpctmFreq, SpctmValue_I_chl, aryRF, 1);
-        HRRR_Q = SIL_get_HRRR(FFT_STAGE, FFT_SIZE, Q_Signal, fs, SpctmFreq, SpctmValue_Q_chl, aryRF, 1);
-        HRRR_MOD_IQ = SIL_get_HRRR(FFT_STAGE, FFT_SIZE, Mod_IQ, fs, SpctmFreq, SpctmValue_Mod_IQ, aryRF, 1);
-
-        // Mark end time
-        // END = clock();
-
-        // Show processing time
-        // printf("FFT costs %6.3f s! \n", (END - START) / CLOCKS_PER_SEC);
-
-        // TBD: This part should be move to the inside of the FFT function!!!
-        // Find the maximum value in the specific spectrum segment , and assume the value as HR or RR
-
-        // I channel
-        /*
-        index_RR = FindMax(SpctmValue_I_chl + lower_limit_RR, size_RR_data);
-        index_HR = FindMax(SpctmValue_I_chl + lower_limit_HR, size_HR_data);
-        HRRR_I.RespRate = round((SpctmFreq[index_RR + lower_limit_RR] * 60));
-        HRRR_I.HrtRate = round((SpctmFreq[index_HR + lower_limit_HR] * 60));
-        */
-
-        // Q channel
-        /*
-        index_RR = FindMax(SpctmValue_Q_chl + lower_limit_RR, size_RR_data);
-        index_HR = FindMax(SpctmValue_Q_chl + lower_limit_HR, size_HR_data);
-        HRRR_Q.RespRate = round((SpctmFreq[index_RR + lower_limit_RR] * 60));
-        HRRR_Q.HrtRate = round((SpctmFreq[index_HR + lower_limit_HR] * 60));
-        */
-        printf("I_chl RR:%d,HR:%d\n", HRRR_I.RespRate, HRRR_I.HrtRate);
-        printf("Q_chl RR:%d,HR:%d\n", HRRR_Q.RespRate, HRRR_Q.HrtRate);
-        printf("Demod RR:%d,HR:%d\n", HRRR_MOD_IQ.RespRate, HRRR_MOD_IQ.HrtRate);
-        fprintf(pFile_HRRR, "%d,%d,%d,%d,%d,%d,%d\n", num_FFT_exec, HRRR_I.RespRate, HRRR_I.HrtRate, HRRR_Q.RespRate, HRRR_Q.HrtRate, HRRR_MOD_IQ.RespRate, HRRR_MOD_IQ.HrtRate);
-        // fprintf(pFile_HRRR, "%d,%d,%d\n", num_FFT_exec, HRRR_Q.RespRate, HRRR_Q.HrtRate);
-
-        // Output data to csv file
-        for (int index_freq = 0; index_freq < FFT_SIZE / 2; index_freq++)
-          fprintf(pFile_FFT, "%d,%6.4f,%6.3f,%6.3f,%6.3f\n", index_freq, SpctmFreq[index_freq], SpctmValue_I_chl[index_freq], SpctmValue_Q_chl[index_freq], SpctmValue_Mod_IQ[index_freq]);
-
-        // open new file for next round datalog (rawdata and FFT analysis result)
-        if (num_FFT_exec >= 1 && num_FFT_exec < max_time)
-        {
-          // Get current time, and generate datalog file name
-          t1 = time(NULL);
-          nPtr = localtime(&t1);
-          strftime(strAry_filename_rawdata, 64, "Datalog/%Y_%m%d_%H%M%S_rawdata.csv", nPtr);
-          strftime(strary_filename_FFT, 64, "Datalog/%Y_%m%d_%H%M%S_FFT.csv", nPtr);
-          // strftime(strary_filename_HRRR, 64, "Datalog/%Y_%m%d_%H%M%S_HRRR.csv", nPtr);
-
-          pFile_ADC = fopen(strAry_filename_rawdata, "w");
-          pFile_FFT = fopen(strary_filename_FFT, "w");
-          // pFile_HRRR = fopen(strary_filename_HRRR, "w");
-
-          // reset spectrum X-axis and Y-axis datas
-          memset(SpctmFreq, 0, FFT_SIZE);
-          memset(SpctmValue_I_chl, 0, FFT_SIZE);
-          memset(SpctmValue_Q_chl, 0, FFT_SIZE);
-          memset(SpctmValue_Mod_IQ, 0, FFT_SIZE);
-        }
-        // end
+        fprintf(pFile_FFT, "%d,%6.4f,%6.3f,%6.3f,%6.3f\n", index_freq, SpctmFreq[index_freq], SpctmValue_I_chl[index_freq], SpctmValue_Q_chl[index_freq], SpctmValue_Mod_IQ[index_freq]);
       }
+
+      for (int index_freq = 0; index_freq < index_freq_max; index_freq++)
+      {
+        if (index_freq == 0)
+        {
+          sprintf(serial_Spctm, "@F0%6.3f,%6.3f\n", SpctmFreq[index_freq], SpctmValue_Mod_IQ[index_freq]);
+          serWrite(SerialStatus, serial_Spctm, strlen(serial_Spctm) + 1);
+          memset(serial_Spctm, 0, 40);
+        }
+        else if (index_freq > 0 && index_freq < index_freq_max - 1)
+        {
+          sprintf(serial_Spctm, "@F1%6.3f,%6.3f\n", SpctmFreq[index_freq], SpctmValue_Mod_IQ[index_freq]);
+          serWrite(SerialStatus, serial_Spctm, strlen(serial_Spctm) + 1);
+          memset(serial_Spctm, 0, 40);
+        }
+        else if (index_freq == (index_freq_max - 1))
+        {
+          sprintf(serial_Spctm, "@F2%6.3f,%6.3f\n", SpctmFreq[index_freq], SpctmValue_Mod_IQ[index_freq]);
+          serWrite(SerialStatus, serial_Spctm, strlen(serial_Spctm) + 1);
+          memset(serial_Spctm, 0, 40);
+        }
+      }
+
+      // open new file for next round datalog (rawdata and FFT analysis result)
+      // NOTE! TO BE DELETED! Datalog function will be moved to PC S/W
+      if (num_FFT_exec >= 1 && num_FFT_exec < max_time)
+      {
+        // Get current time, and generate datalog file name
+        t1 = time(NULL);
+        nPtr = localtime(&t1);
+        strftime(strAry_filename_rawdata, 64, "Datalog/%Y_%m%d_%H%M%S_rawdata.csv", nPtr);
+        strftime(strary_filename_FFT, 64, "Datalog/%Y_%m%d_%H%M%S_FFT.csv", nPtr);
+        // strftime(strary_filename_HRRR, 64, "Datalog/%Y_%m%d_%H%M%S_HRRR.csv", nPtr);
+
+        pFile_ADC = fopen(strAry_filename_rawdata, "w");
+        pFile_FFT = fopen(strary_filename_FFT, "w");
+        // pFile_HRRR = fopen(strary_filename_HRRR, "w");
+
+        // reset spectrum X-axis and Y-axis datas
+        memset(SpctmFreq, 0, FFT_SIZE);
+        memset(SpctmValue_I_chl, 0, FFT_SIZE);
+        memset(SpctmValue_Q_chl, 0, FFT_SIZE);
+        memset(SpctmValue_Mod_IQ, 0, FFT_SIZE);
+      }
+      // end
+      // }
     }
   }
   // close file reference
