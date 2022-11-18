@@ -179,8 +179,7 @@ int main(int argc, char *argv[])
   }
   else
   {
-    if (ads131_debug_on == 1)
-      printf("pigpio initialize success!\n");
+    printf("pigpio initialize success!\n");
   }
 
   // pigpio library: Open new Com port, and save its handle variable
@@ -228,8 +227,7 @@ int main(int argc, char *argv[])
   // show ISR initialization error message according to return value
   if (status_ISR_Register == 0)
   {
-    if (ads131_debug_on == 1)
-      printf("ISR Registered OK!\n");
+    // printf("ISR Registered OK!\n");
   }
   else
   {
