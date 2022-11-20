@@ -18,6 +18,12 @@
 
 // Input data array (from ADC, only real number)
 double Volt_I[FFT_SIZE], Volt_Q[FFT_SIZE];
+double avg_I = 0.0, avg_Q = 0.0;
+double max_I = 0.0, max_Q = 0.0;
+
+// for Motion detection
+uint16_t isMmotionDetected;
+double thr_Motion = 0.01; // threshold of motiion detection from time-domain signal change(volt)
 
 uint32_t max_time;
 uint32_t num_FFT_exec = 0;
@@ -313,7 +319,17 @@ int main(int argc, char *argv[])
       // Convert raw data to complex-number
       // dbl_to_cplx(FFT_SIZE, Volt_I, I_Signal);
       // dbl_to_cplx(FFT_SIZE, Volt_Q, Q_Signal);
-      cplx_Demod(FFT_SIZE, Volt_I, Volt_Q, Mod_IQ);
+      avg_I = getAvg(Volt_I, FFT_SIZE);
+      avg_Q = getAvg(Volt_Q, FFT_SIZE);
+      max_I = Volt_I[FindMax(Volt_I, FFT_SIZE)];
+      max_Q = Volt_Q[FindMax(Volt_Q, FFT_SIZE)];
+
+      if (((max_I - avg_I) >= thr_Motion) | ((max_Q - avg_Q) >= thr_Motion))
+        isMmotionDetected = 2.0;
+      else
+        isMmotionDetected = 0.0;
+
+      cplx_Demod(FFT_SIZE, Volt_I, Volt_Q, Mod_IQ, avg_I, avg_Q);
 
       // HRRR_I = SIL_get_HRRR(FFT_STAGE, FFT_SIZE, I_Signal, fs, SpctmFreq, SpctmValue_I_chl, aryRF, 1);
       // HRRR_Q = SIL_get_HRRR(FFT_STAGE, FFT_SIZE, Q_Signal, fs, SpctmFreq, SpctmValue_Q_chl, aryRF, 1);
@@ -327,9 +343,9 @@ int main(int argc, char *argv[])
 
       // printf("I_chl RR:%d,HR:%d\n", HRRR_I.RespRate, HRRR_I.HrtRate);
       // printf("Q_chl RR:%d,HR:%d\n", HRRR_Q.RespRate, HRRR_Q.HrtRate);
-      printf("Demod RR:%d,HR:%d\n", HRRR_MOD_IQ.RespRate, HRRR_MOD_IQ.HrtRate);
+      printf("IQ-Demod RR:%d,HR:%d, Motion:%d\n", HRRR_MOD_IQ.RespRate, HRRR_MOD_IQ.HrtRate, isMmotionDetected);
 
-      sprintf(serial_Data, "@R%d,%d\n", HRRR_MOD_IQ.RespRate, HRRR_MOD_IQ.HrtRate);
+      sprintf(serial_Data, "@R%d,%d,%d\n", HRRR_MOD_IQ.RespRate, HRRR_MOD_IQ.HrtRate, isMmotionDetected);
       serWrite(SerialStatus, serial_Data, strlen(serial_Data) + 1);
       memset(serial_Data, 0, 40);
 
