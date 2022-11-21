@@ -114,7 +114,7 @@ void myInterrupt0(int gpio, int level, uint32_t tick)
     // when the data collection procedure has not completed!
     //  ADC_Mod_IQ = sqrt(pow(aData_ADC[1]-avg_1, 2) + pow(aData_ADC[2]-avg2, 2));
 
-    sprintf(serial_Data, "@D%6.3f,%6.3f,%6.3f\n", aData_ADC[1], aData_ADC[2], ADC_Mod_IQ);
+    sprintf(serial_Data, "@D%7.3f,%7.3f,%7.3f\n", aData_ADC[1], aData_ADC[2], ADC_Mod_IQ);
     serWrite(SerialStatus, serial_Data, strlen(serial_Data) + 1);
     // memset(serial_Data, 0, 40);
 
@@ -362,26 +362,26 @@ int main(int argc, char *argv[])
 
       for (int index_freq = 0; index_freq < index_freq_max; index_freq++)
       {
-        fprintf(pFile_FFT, "%d,%6.4f,%6.3f,%6.3f,%6.3f\n", index_freq, SpctmFreq[index_freq], SpctmValue_I_chl[index_freq], SpctmValue_Q_chl[index_freq], SpctmValue_Mod_IQ[index_freq]);
+        fprintf(pFile_FFT, "%d,%6.4f,%6.3f,%6.3f,%f\n", index_freq, SpctmFreq[index_freq], SpctmValue_I_chl[index_freq], SpctmValue_Q_chl[index_freq], SpctmValue_Mod_IQ[index_freq]);
       }
 
       for (int index_freq = 0; index_freq < index_freq_max; index_freq++)
       {
         if (index_freq == 0)
         {
-          sprintf(serial_Spctm, "@F0%6.3f,%6.3f\n", SpctmFreq[index_freq], SpctmValue_Mod_IQ[index_freq]);
+          sprintf(serial_Spctm, "@F0,%6.4f,%f\n", SpctmFreq[index_freq], SpctmValue_Mod_IQ[index_freq]);
           serWrite(SerialStatus, serial_Spctm, strlen(serial_Spctm) + 1);
           // memset(serial_Spctm, 0, 40);
         }
         else if (index_freq > 0 && index_freq < index_freq_max - 1)
         {
-          sprintf(serial_Spctm, "@F1%6.3f,%6.3f\n", SpctmFreq[index_freq], SpctmValue_Mod_IQ[index_freq]);
+          sprintf(serial_Spctm, "@F1,%6.4f,%f\n", SpctmFreq[index_freq], SpctmValue_Mod_IQ[index_freq]);
           serWrite(SerialStatus, serial_Spctm, strlen(serial_Spctm) + 1);
           // memset(serial_Spctm, 0, 40);
         }
         else if (index_freq == (index_freq_max - 1))
         {
-          sprintf(serial_Spctm, "@F2%6.3f,%6.3f\n", SpctmFreq[index_freq], SpctmValue_Mod_IQ[index_freq]);
+          sprintf(serial_Spctm, "@F2,%6.4f,%f\n", SpctmFreq[index_freq], SpctmValue_Mod_IQ[index_freq]);
           serWrite(SerialStatus, serial_Spctm, strlen(serial_Spctm) + 1);
           // memset(serial_Spctm, 0, 40);
         }
