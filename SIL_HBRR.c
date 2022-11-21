@@ -104,6 +104,10 @@ void myInterrupt0(int gpio, int level, uint32_t tick)
     ADS131A0x_GetADCData(1, aData_ADC);  // Mode1= Real ADC
     Volt_I[countDataAcq] = aData_ADC[1]; // channel 2
     Volt_Q[countDataAcq] = aData_ADC[2]; // channel 3
+
+    // Here, the IQ complex signal= sqrt(I^2+Q^2)
+    // However, this is different to the Demod_IQ definition of cplx_Demod(),function
+    // it lacks the DC offset calibration process because the average value of Volt_I /Volt_Q is still unknown at this time
     ADC_Mod_IQ = sqrt(pow(aData_ADC[1], 2) + pow(aData_ADC[2], 2));
 
     // This IQ-Demod data should be ADC1-avg_1, but the average value avg_1,avg_2 is still unknown
@@ -112,7 +116,7 @@ void myInterrupt0(int gpio, int level, uint32_t tick)
 
     sprintf(serial_Data, "@D%6.3f,%6.3f,%6.3f\n", aData_ADC[1], aData_ADC[2], ADC_Mod_IQ);
     serWrite(SerialStatus, serial_Data, strlen(serial_Data) + 1);
-    memset(serial_Data, 0, 40);
+    // memset(serial_Data, 0, 40);
 
     countDataAcq++;
 
@@ -325,9 +329,9 @@ int main(int argc, char *argv[])
       max_Q = Volt_Q[FindMax(Volt_Q, FFT_SIZE)];
 
       if (((max_I - avg_I) >= thr_Motion) | ((max_Q - avg_Q) >= thr_Motion))
-        isMmotionDetected = 2.0;
+        isMmotionDetected = 2;
       else
-        isMmotionDetected = 0.0;
+        isMmotionDetected = 0;
 
       cplx_Demod(FFT_SIZE, Volt_I, Volt_Q, Mod_IQ, avg_I, avg_Q);
 
@@ -343,14 +347,14 @@ int main(int argc, char *argv[])
 
       // printf("I_chl RR:%d,HR:%d\n", HRRR_I.RespRate, HRRR_I.HrtRate);
       // printf("Q_chl RR:%d,HR:%d\n", HRRR_Q.RespRate, HRRR_Q.HrtRate);
-      printf("IQ-Demod RR:%d,HR:%d, Motion:%d\n", HRRR_MOD_IQ.RespRate, HRRR_MOD_IQ.HrtRate, isMmotionDetected);
+      printf("IQ-Demod RR:%u,HR:%u, Motion:%u\n", HRRR_MOD_IQ.RespRate, HRRR_MOD_IQ.HrtRate, isMmotionDetected);
 
-      sprintf(serial_Data, "@R%d,%d,%d\n", HRRR_MOD_IQ.RespRate, HRRR_MOD_IQ.HrtRate, isMmotionDetected);
+      sprintf(serial_Data, "@R%u,%u,%u\n", HRRR_MOD_IQ.RespRate, HRRR_MOD_IQ.HrtRate, isMmotionDetected);
       serWrite(SerialStatus, serial_Data, strlen(serial_Data) + 1);
-      memset(serial_Data, 0, 40);
+      // memset(serial_Data, 0, 40);
 
       // fprintf(pFile_HRRR, "%d,%d,%d,%d,%d,%d,%d\n", num_FFT_exec, HRRR_I.RespRate, HRRR_I.HrtRate, HRRR_Q.RespRate, HRRR_Q.HrtRate, HRRR_MOD_IQ.RespRate, HRRR_MOD_IQ.HrtRate);
-      fprintf(pFile_HRRR, "%d,%d,%d\n", num_FFT_exec, HRRR_I.RespRate, HRRR_I.HrtRate, HRRR_Q.RespRate, HRRR_Q.HrtRate, HRRR_MOD_IQ.RespRate, HRRR_MOD_IQ.HrtRate);
+      fprintf(pFile_HRRR, "%d,%u,%u\n", num_FFT_exec, HRRR_MOD_IQ.RespRate, HRRR_MOD_IQ.HrtRate);
       // fprintf(pFile_HRRR, "%d,%d,%d\n", num_FFT_exec, HRRR_Q.RespRate, HRRR_Q.HrtRate);
 
       // Output data to csv file
@@ -367,19 +371,19 @@ int main(int argc, char *argv[])
         {
           sprintf(serial_Spctm, "@F0%6.3f,%6.3f\n", SpctmFreq[index_freq], SpctmValue_Mod_IQ[index_freq]);
           serWrite(SerialStatus, serial_Spctm, strlen(serial_Spctm) + 1);
-          memset(serial_Spctm, 0, 40);
+          // memset(serial_Spctm, 0, 40);
         }
         else if (index_freq > 0 && index_freq < index_freq_max - 1)
         {
           sprintf(serial_Spctm, "@F1%6.3f,%6.3f\n", SpctmFreq[index_freq], SpctmValue_Mod_IQ[index_freq]);
           serWrite(SerialStatus, serial_Spctm, strlen(serial_Spctm) + 1);
-          memset(serial_Spctm, 0, 40);
+          // memset(serial_Spctm, 0, 40);
         }
         else if (index_freq == (index_freq_max - 1))
         {
           sprintf(serial_Spctm, "@F2%6.3f,%6.3f\n", SpctmFreq[index_freq], SpctmValue_Mod_IQ[index_freq]);
           serWrite(SerialStatus, serial_Spctm, strlen(serial_Spctm) + 1);
-          memset(serial_Spctm, 0, 40);
+          // memset(serial_Spctm, 0, 40);
         }
       }
 
