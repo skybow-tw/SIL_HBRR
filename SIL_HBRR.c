@@ -36,15 +36,8 @@ double SpctmValue_I_chl[FFT_SIZE], SpctmValue_Q_chl[FFT_SIZE], SpctmValue_Mod_IQ
 double *aryTF = NULL;
 complex_t *aryRF = NULL;
 
-// //=====Human vital signs analysis algorithm parameters=====
-// int index_RR, index_HR;
-
-// int lower_limit_RR, upper_limit_RR, lower_limit_HR, upper_limit_HR;
-// int size_RR_data, size_HR_data;
-// int index_freq;
-
-int index_freq_max = 197; // resolution= fs/N, max freq= 3Hz, index_max= 3/(fs/N)=3.0/0.01526 = 196.59 ~=197th
-// index_freq_max=FFT_SIZE/2; //normally it's the freq_index of Nyquist frequency = half of fs
+int index_freq_max = FFT_SIZE / 2; // maximum index for output partial FFT spectrum,normally it's the freq_index of Nyquist frequency = half of fs
+// index_freq_max = 3.0 / (fs / N); // resolution= fs/N, max freq= 3Hz, index_max= 3/(fs/N)=3.0/0.01526 = 196.59 ~=197th
 
 vital_t HRRR_I, HRRR_Q, HRRR_MOD_IQ;
 
@@ -73,7 +66,7 @@ float aData_ADC[4] = {0};
 float ADC_Mod_IQ = 0.0;
 
 // datalog file name
-FILE *pFile_ADC, *pFile_FFT, *pFile_HRRR;
+// FILE *pFile_ADC, *pFile_FFT, *pFile_HRRR;
 char strAry_filename_rawdata[64] = {};
 char strary_filename_FFT[64] = {};
 char strary_filename_HRRR[64] = {};
@@ -87,62 +80,7 @@ char serial_Spctm[40] = {0};
 time_t t1;       //  Declare a "time_t" type variable
 struct tm *nPtr; // Declare a "struct tm" type pointer
 
-void BufferClean(char *);
-
-//================ISR for pigpio=======================
-// NOTE: when RPi GPIO#0 detect Falling Edge, it would trigger ISR,
-// that is, calling "myInterrupt0" function ,and pass 3 parameters to it (gpio,level,tick)
-
-void myInterrupt0(int gpio, int level, uint32_t tick)
-{
-  // This function would be called on both Rising or Falling Edge,
-  // but it would receive "level" parameter indicating the edge type(0=Falling ,1=Rising)
-
-  // level=0 means Falling Edge
-  if (level == 0)
-  {
-    ADS131A0x_GetADCData(1, aData_ADC);  // Mode1= Real ADC
-    Volt_I[countDataAcq] = aData_ADC[1]; // channel 2
-    Volt_Q[countDataAcq] = aData_ADC[2]; // channel 3
-
-    // Here, the IQ complex signal= sqrt(I^2+Q^2)
-    // However, this is different to the Demod_IQ definition of cplx_Demod(),function
-    // it lacks the DC offset calibration process because the average value of Volt_I /Volt_Q is still unknown at this time
-    ADC_Mod_IQ = sqrt(pow(aData_ADC[1], 2) + pow(aData_ADC[2], 2));
-
-    // This IQ-Demod data should be ADC1-avg_1, but the average value avg_1,avg_2 is still unknown
-    // when the data collection procedure has not completed!
-    //  ADC_Mod_IQ = sqrt(pow(aData_ADC[1]-avg_1, 2) + pow(aData_ADC[2]-avg2, 2));
-
-    sprintf(serial_Data, "@D%7.3f,%7.3f,%7.3f\n", aData_ADC[1], aData_ADC[2], ADC_Mod_IQ);
-    serWrite(SerialStatus, serial_Data, strlen(serial_Data) + 1);
-    // memset(serial_Data, 0, 40);
-
-    countDataAcq++;
-
-    if ((countDataAcq % 500) == 0)
-    {
-      printf("%2d\n", countDataAcq / 500); // To be replaced by progress bar (*****----- 99%)
-
-      // Serial Out
-      sprintf(serial_Msg, "@MRaw#%2d\n", countDataAcq / 500);
-      serWrite(SerialStatus, serial_Msg, strlen(serial_Msg) + 1);
-      memset(serial_Msg, 0, 40);
-    }
-    // if ((countDataAcq % 250) == 0)
-    // {
-    //   printf("Volt_I:%f, Volt_Q:%f\n", Volt_I[countDataAcq], Volt_Q[countDataAcq]);
-    // }
-
-    // printf("%d\n", ++countDataAcq); //To be replaced by RPi serial library
-
-    // printf("%6.3f,%6.3f \n", aData_ADC[1], aData_ADC[2]);
-
-    // CHANGE to "fwrite()"" would be faster if output data total length longer than 5 cahracter, e.g. "56789"=5Bytes,
-    // but fwrite use its integer size, i.e. "1"=4Bytes, "56789" still = 4Bytes!
-    fprintf(pFile_ADC, "%6.3f,%6.3f,%6.3f\n", aData_ADC[1], aData_ADC[2], ADC_Mod_IQ);
-  }
-}
+void myInterrupt0(int gpio, int level, uint32_t tick);
 
 // /=================================================================================
 int main(int argc, char *argv[])
@@ -173,13 +111,12 @@ int main(int argc, char *argv[])
   strftime(strary_filename_FFT, 64, "Datalog/%Y_%m%d_%H%M%S_FFT.csv", nPtr);
   strftime(strary_filename_HRRR, 64, "Datalog/%Y_%m%d_%H%M%S_HRRR.csv", nPtr);
 
-  pFile_ADC = fopen(strAry_filename_rawdata, "w");
-  pFile_FFT = fopen(strary_filename_FFT, "w");
-  pFile_HRRR = fopen(strary_filename_HRRR, "w");
+  // pFile_ADC = fopen(strAry_filename_rawdata, "w");
+  // pFile_FFT = fopen(strary_filename_FFT, "w");
+  // pFile_HRRR = fopen(strary_filename_HRRR, "w");
 
   // Generate column name for HRRR file
-  // fprintf(pFile_HRRR, "%s,%s,%s,%s,%s,%s,%s\n", "NUM", "I_RR", "I_HR", "Q_RR", "Q_HR", "IQ_RR", "IQ_HR");
-  fprintf(pFile_HRRR, "%s,%s,%s\n", "NUM", "IQ_RR", "IQ_HR");
+  // fprintf(pFile_HRRR, "%s,%s,%s\n", "NUM", "IQ_RR", "IQ_HR");
 
   // pigpio.h initializing Function
   if (gpioInitialise() < 0)
@@ -201,21 +138,15 @@ int main(int argc, char *argv[])
     printf("SERIAL open fail with error: %d!\n", SerialStatus); //-24= PI_NO_HANDLE, -72=PI_SER_OPEN_FAILED
 
   // serial write test
-  //  for (int i = 0; i < 100; i++)
-  //  {
-  //    // sprintf(serial_Msg, "@D%5.3f\n", sin(i));
-  //    sprintf(serial_Msg, "@D%6.3f\n", sin(i / 6.2832));
-
-  //   // serWrite(SerialStatus, "data # \n", 7);
-  //   serWrite(SerialStatus, serial_Msg, 9);
-  //   // delay(100);
-  //   usleep(50000);
-
-  //   // sleep(1);
-  // }
+  /*
+  for (int i = 0; i < 100; i++)
+  {
+    sprintf(serial_Msg, "@D%6.3f\n", sin(i / 6.2832));
+    serWrite(SerialStatus, serial_Msg, 9);
+    usleep(50000);
+  }
+  */
   // printf("SERIAL close success at handle: %d!\n", serClose(SerialStatus));
-
-  //======
 
   // Initialize SPI with CS=0,speed=2MHz (SPI Mode is fixed to Mode1)
   ADS131A0x_setSPI(CS_0, 2000000);
@@ -258,41 +189,20 @@ int main(int argc, char *argv[])
     }
   }
 
-  // This should be change to infinite loop, such as while(1){}?
-  // NO! here, it should be a thread that detect
-  // if the newest 500 point in the circular buffer had been update?
-  // then it would do the FFT and HB/RR analysis again
-
-  // for DFT
-  // This TF should be calculated only once in the beginning
-  // aryTF = GenTwiddleFactor(FFT_SIZE);
-
   aryRF = GenRF(FFT_STAGE);
 
-  // =====Initialize temp variable for FFT=====
+  // TBD: it should be a thread that detect
+  // if the newest FFT_SIZE point in the circular buffer had been update?
+  // then it would do the FFT and RRHR analysis repeatedly
 
-  // FFT_resl = fs / FFT_SIZE;         // fs/N=0.01526
-  // lower_limit_RR = 0.08 / FFT_resl; // RR=0.08~0.7HZ(4.8~42 pm), so 0.08/0.01526=5.24 ~=5th
-  // upper_limit_RR = 0.7 / FFT_resl;  // 0.7/0.01526=45.8752 ~=46th
-  // size_RR_data = upper_limit_RR - lower_limit_RR + 1;
-
-  // lower_limit_HR = 0.9 / FFT_resl; // HB =0.9~3.5HZ (54~210bpm), so 0.9/0.01526=58.98 ~=59th
-  // upper_limit_HR = 3.5 / FFT_resl; // 3.5/0.01526 = 229.38 ~=229th
-  // size_HR_data = upper_limit_HR - lower_limit_HR + 1;
-
-  // num_FFT_exec = 0;
-
-  // START infinite loop!!!
+  // START infinite loop
   // while (1)
   while (num_FFT_exec < max_time)
   {
     // Continuously detect GPIO interruption until gathering FFT_SIZE points data from ADC.
+    // Perform FFT only if ADC has collected "enough number" of data points (say, 32768 points)
     if (countDataAcq >= 1 && ((countDataAcq % FFT_SIZE) == 0))
     {
-
-      // Perform FFT only if ADC has collected "enough number" of data points (say, 32768 points)
-      // if ((countDataAcq % FFT_SIZE) == 0)
-      // {
 
       // increse the number of FFT execution by 1
       num_FFT_exec++;
@@ -302,13 +212,6 @@ int main(int argc, char *argv[])
 
       // t1 = time(NULL);
       // nPtr = localtime(&t1);
-
-      // // Format tm type to string literal
-      // strftime(strAry_filename_rawdata, 64, "Datalog/%Y_%m%d_%H%M%S_rawdata.csv", nPtr);
-      // strftime(strary_filename_FFT, 64, "Datalog/%Y_%m%d_%H%M%S_DFT.csv", nPtr);
-
-      // pFile_ADC = fopen(strAry_filename_rawdata, "w");
-      // pFile_FFT = fopen(strary_filename_FFT, "w");
 
       // Mark start time
       // START = clock();
@@ -353,8 +256,11 @@ int main(int argc, char *argv[])
       serWrite(SerialStatus, serial_Data, strlen(serial_Data) + 1);
       // memset(serial_Data, 0, 40);
 
+      // use this one
+      //  fprintf(pFile_HRRR, "%d,%u,%u\n", num_FFT_exec, HRRR_MOD_IQ.RespRate, HRRR_MOD_IQ.HrtRate);
+
+      // Dprecated!
       // fprintf(pFile_HRRR, "%d,%d,%d,%d,%d,%d,%d\n", num_FFT_exec, HRRR_I.RespRate, HRRR_I.HrtRate, HRRR_Q.RespRate, HRRR_Q.HrtRate, HRRR_MOD_IQ.RespRate, HRRR_MOD_IQ.HrtRate);
-      fprintf(pFile_HRRR, "%d,%u,%u\n", num_FFT_exec, HRRR_MOD_IQ.RespRate, HRRR_MOD_IQ.HrtRate);
       // fprintf(pFile_HRRR, "%d,%d,%d\n", num_FFT_exec, HRRR_Q.RespRate, HRRR_Q.HrtRate);
 
       // Output data to csv file
@@ -362,11 +268,8 @@ int main(int argc, char *argv[])
 
       for (int index_freq = 0; index_freq < index_freq_max; index_freq++)
       {
-        fprintf(pFile_FFT, "%d,%6.4f,%6.3f,%6.3f,%f\n", index_freq, SpctmFreq[index_freq], SpctmValue_I_chl[index_freq], SpctmValue_Q_chl[index_freq], SpctmValue_Mod_IQ[index_freq]);
-      }
+        // fprintf(pFile_FFT, "%d,%6.4f,%6.3f,%6.3f,%f\n", index_freq, SpctmFreq[index_freq], SpctmValue_I_chl[index_freq], SpctmValue_Q_chl[index_freq], SpctmValue_Mod_IQ[index_freq]);
 
-      for (int index_freq = 0; index_freq < index_freq_max; index_freq++)
-      {
         if (index_freq == 0)
         {
           sprintf(serial_Spctm, "@F0,%6.4f,%f\n", SpctmFreq[index_freq], SpctmValue_Mod_IQ[index_freq]);
@@ -398,8 +301,8 @@ int main(int argc, char *argv[])
         strftime(strary_filename_FFT, 64, "Datalog/%Y_%m%d_%H%M%S_FFT.csv", nPtr);
         // strftime(strary_filename_HRRR, 64, "Datalog/%Y_%m%d_%H%M%S_HRRR.csv", nPtr);
 
-        pFile_ADC = fopen(strAry_filename_rawdata, "w");
-        pFile_FFT = fopen(strary_filename_FFT, "w");
+        // pFile_ADC = fopen(strAry_filename_rawdata, "w");
+        // pFile_FFT = fopen(strary_filename_FFT, "w");
         // pFile_HRRR = fopen(strary_filename_HRRR, "w");
 
         // reset spectrum X-axis and Y-axis datas
@@ -413,35 +316,62 @@ int main(int argc, char *argv[])
     }
   }
   // close file reference
-  fclose(pFile_ADC);
-  fclose(pFile_FFT);
-  fclose(pFile_HRRR);
+  // fclose(pFile_ADC);
+  // fclose(pFile_FFT);
+  // fclose(pFile_HRRR);
 
   // Disable interruption at GPIO_0 through calling  "gpioSetISRFunc" function again
   // by passing a NULL function pointer
   gpioSetISRFunc(17, FALLING_EDGE, 0, NULL);
 
   printf("Stop Data Acquiring!\n ===================\n");
-
-  // calculate processing time
-
-  /*
-  // DFT, input I signal=Volt_I,Outpust spectrum=SpctmValue_I_chl
-  // Set isRRHB=1 to perform FFT at human RR/HB detection mode
-  DFT(Volt_I, FFT_SIZE, fs, SpctmFreq, SpctmValue_I_chl, aryTF, 1);
-  DFT(Volt_Q, FFT_SIZE, fs, SpctmFreq, SpctmValue_Q_chl, aryTF, 1);
-  */
   return 0;
 }
 
-//-------------------------------------------------------
-// This function clean the UART input data buffer
-void BufferClean(char *CharArray)
+//================ISR for pigpio=======================
+// NOTE: when RPi GPIO#0 detect Falling Edge, it would trigger ISR,
+// that is, calling "myInterrupt0" function ,and pass 3 parameters to it (gpio,level,tick)
+
+void myInterrupt0(int gpio, int level, uint32_t tick)
 {
-  int i;
-  for (i = SIZE_SERIAL_BUFFER - 1; i >= 0; i--)
+  // This function would be called on both Rising or Falling Edge,
+  // but it would receive "level" parameter indicating the edge type(0=Falling ,1=Rising)
+
+  // level=0 means Falling Edge
+  if (level == 0)
   {
-    // can't use sizeof?
-    CharArray[i] = 0;
+    ADS131A0x_GetADCData(1, aData_ADC);  // Mode1= Real ADC
+    Volt_I[countDataAcq] = aData_ADC[1]; // channel 2
+    Volt_Q[countDataAcq] = aData_ADC[2]; // channel 3
+
+    // Here, the IQ complex signal= sqrt(I^2+Q^2)
+    // However, it should be ADC1-avg_1, but the average value avg_1,avg_2 is still unknown at this time
+    // so it lacks the DC offset calibration process
+    //  ADC_Mod_IQ = sqrt(pow(aData_ADC[1]-avg_1, 2) + pow(aData_ADC[2]-avg2, 2));
+    ADC_Mod_IQ = sqrt(pow(aData_ADC[1], 2) + pow(aData_ADC[2], 2));
+
+    // CHANGE to "fwrite()"" would be faster if output data total length longer than 5 cahracter, e.g. "56789"=5Bytes,
+    // but fwrite use its integer size, i.e. "1"=4Bytes, "56789" still = 4Bytes!
+    // fprintf(pFile_ADC, "%6.3f,%6.3f,%6.3f\n", aData_ADC[1], aData_ADC[2], ADC_Mod_IQ);
+
+    sprintf(serial_Data, "@D%7.3f,%7.3f,%7.3f\n", aData_ADC[1], aData_ADC[2], ADC_Mod_IQ);
+    serWrite(SerialStatus, serial_Data, strlen(serial_Data) + 1);
+    // memset(serial_Data, 0, 40);
+
+    countDataAcq++;
+
+    if ((countDataAcq % 500) == 0)
+    {
+      printf("%2d\n", countDataAcq / 500); // To be replaced by progress bar (*****----- 99%)
+
+      // Test message serial out
+      /*
+      sprintf(serial_Msg, "@MRaw#%2d\n", countDataAcq / 500);
+      serWrite(SerialStatus, serial_Msg, strlen(serial_Msg) + 1);
+      memset(serial_Msg, 0, 40);
+      */
+    }
   }
 }
+
+//-------------------------------------------------------
