@@ -66,7 +66,7 @@ float aData_ADC[4] = {0};
 float ADC_Mod_IQ = 0.0;
 
 // datalog file name
-// FILE *pFile_ADC, *pFile_FFT, *pFile_HRRR;
+FILE *pFile_ADC, *pFile_FFT, *pFile_HRRR;
 char strAry_filename_rawdata[64] = {};
 char strary_filename_FFT[64] = {};
 char strary_filename_HRRR[64] = {};
@@ -80,7 +80,7 @@ char serial_Spctm[40] = {0};
 time_t t1;       //  Declare a "time_t" type variable
 struct tm *nPtr; // Declare a "struct tm" type pointer
 
-void myInterrupt0(int gpio, int level, uint32_t tick);
+void ISR_ADC(int gpio, int level, uint32_t tick);
 
 // /=================================================================================
 int main(int argc, char *argv[])
@@ -107,13 +107,15 @@ int main(int argc, char *argv[])
 
   // Get current time, and generate "the first" datalog file name
   // Format tm type to string literal
+  /*
   strftime(strAry_filename_rawdata, 64, "Datalog/%Y_%m%d_%H%M%S_rawdata.csv", nPtr);
   strftime(strary_filename_FFT, 64, "Datalog/%Y_%m%d_%H%M%S_FFT.csv", nPtr);
   strftime(strary_filename_HRRR, 64, "Datalog/%Y_%m%d_%H%M%S_HRRR.csv", nPtr);
 
-  // pFile_ADC = fopen(strAry_filename_rawdata, "w");
-  // pFile_FFT = fopen(strary_filename_FFT, "w");
-  // pFile_HRRR = fopen(strary_filename_HRRR, "w");
+  pFile_ADC = fopen(strAry_filename_rawdata, "w");
+  pFile_FFT = fopen(strary_filename_FFT, "w");
+  pFile_HRRR = fopen(strary_filename_HRRR, "w");
+  */
 
   // Generate column name for HRRR file
   // fprintf(pFile_HRRR, "%s,%s,%s\n", "NUM", "IQ_RR", "IQ_HR");
@@ -158,12 +160,12 @@ int main(int argc, char *argv[])
   // Follwoing part should be put inside the while loop,
   // and it would start acquiring data after get "START" command form keyboard or RS-232 "%S"
 
-  ADS131A0x_InitialADC();
+  ADS131A0x_InitialADC(); // TBD: add fs=500Hz ,Vref=4.0 or 2.442,NCP=0 or 1 as input parameters
   ADS131A0x_Start();
   printf("Start Data Acquiring!\n ===================\n");
 
   // Enable interruption at GPIO_0
-  status_ISR_Register = gpioSetISRFunc(17, FALLING_EDGE, 0, myInterrupt0);
+  status_ISR_Register = gpioSetISRFunc(17, FALLING_EDGE, 0, ISR_ADC);
 
   // show ISR initialization error message according to return value
   if (status_ISR_Register == 0)
@@ -330,9 +332,9 @@ int main(int argc, char *argv[])
 
 //================ISR for pigpio=======================
 // NOTE: when RPi GPIO#0 detect Falling Edge, it would trigger ISR,
-// that is, calling "myInterrupt0" function ,and pass 3 parameters to it (gpio,level,tick)
+// that is, calling "ISR_ADC" function ,and pass 3 parameters to it (gpio,level,tick)
 
-void myInterrupt0(int gpio, int level, uint32_t tick)
+void ISR_ADC(int gpio, int level, uint32_t tick)
 {
   // This function would be called on both Rising or Falling Edge,
   // but it would receive "level" parameter indicating the edge type(0=Falling ,1=Rising)
@@ -354,9 +356,11 @@ void myInterrupt0(int gpio, int level, uint32_t tick)
     // but fwrite use its integer size, i.e. "1"=4Bytes, "56789" still = 4Bytes!
     // fprintf(pFile_ADC, "%6.3f,%6.3f,%6.3f\n", aData_ADC[1], aData_ADC[2], ADC_Mod_IQ);
 
+    /*
     sprintf(serial_Data, "@D%7.3f,%7.3f,%7.3f\n", aData_ADC[1], aData_ADC[2], ADC_Mod_IQ);
     serWrite(SerialStatus, serial_Data, strlen(serial_Data) + 1);
     // memset(serial_Data, 0, 40);
+    */
 
     countDataAcq++;
 
