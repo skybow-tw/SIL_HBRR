@@ -17,7 +17,9 @@
 // uint32_t FFT_size = (1u << FFT_STAGE);
 
 // Input data array (from ADC, only real number)
-double Volt_I[FFT_SIZE], Volt_Q[FFT_SIZE], Volt_Mod_IQ[FFT_SIZE];
+double Volt_I[FFT_SIZE], Volt_Q[FFT_SIZE];
+double Volt_Mod_IQ[FFT_SIZE];
+
 double avg_I = 0.0, avg_Q = 0.0;
 double max_I = 0.0, max_Q = 0.0;
 
@@ -36,8 +38,9 @@ double SpctmValue_I_chl[FFT_SIZE], SpctmValue_Q_chl[FFT_SIZE], SpctmValue_Mod_IQ
 double *aryTF = NULL;
 complex_t *aryRF = NULL;
 
-int index_freq_max = FFT_SIZE / 2; // maximum index for output partial FFT spectrum,normally it's the freq_index of Nyquist frequency = half of fs
-// index_freq_max = 3.0 / (fs / N); // resolution= fs/N, max freq= 3Hz, index_max= 3/(fs/N)=3.0/0.01526 = 196.59 ~=197th
+// The maximum index of SpctmFreq[i] of FFT spectrum
+int index_freq_max = FFT_SIZE / 2; // Nyquist frequency = fs/2
+//  index_freq_max = 3.0 / (fs / N); //for RRHR only (0Hz ~ 3Hz) ; since FFT resolution= fs/N, if max. freq= 3Hz, index_max= 3/(fs/N)=3.0/0.01526 = 196.59 ~=197th
 
 vital_t HRRR_I, HRRR_Q, HRRR_MOD_IQ;
 
@@ -66,12 +69,14 @@ char strary_filename_HRRR[64] = {};
 
 //=============Serial UART===========
 int SerialStatus = -1;
-uint32_t serial_buffer_size;
-int residue;
-// char serial_Data[40] = {0};
+
 char serial_Data[SIZE_SERIAL_BUFFER] = {0};
-char serial_Msg[40] = {0};
-char serial_Spctm[40] = {0};
+char serial_Msg[SIZE_SERIAL_BUFFER] = {0};
+char serial_Spctm[SIZE_SERIAL_BUFFER] = {0};
+
+uint32_t serial_buffer_size;
+double serial_ADC_buffer[50];
+int residue;
 //===============General purpose Functions Declaration====================
 
 void ISR_ADC(int gpio, int level, uint32_t tick);
@@ -109,6 +114,7 @@ int main(int argc, char *argv[])
   pFile_ADC = fopen(strAry_filename_rawdata, "w");
   pFile_FFT = fopen(strary_filename_FFT, "w");
   pFile_HRRR = fopen(strary_filename_HRRR, "w");
+
   // Generate column name for HRRR file
   fprintf(pFile_HRRR, "%s,%s,%s\n", "NUM", "IQ_RR", "IQ_HR");
   */
@@ -188,6 +194,13 @@ int main(int argc, char *argv[])
   // if the newest FFT_SIZE point in the circular buffer had been update?
   // then it would do the FFT and RRHR analysis repeatedly
 
+  /*
+  //calculate processing time
+  START = clock(); // Mark start time
+  END = clock(); // Mark end time
+  printf("FFT costs %6.3f s! \n", (END - START) / CLOCKS_PER_SEC); // Show processing time
+  */
+
   // START infinite loop
   // while (1)
   while (num_FFT_exec < max_time)
@@ -213,7 +226,7 @@ int main(int argc, char *argv[])
     }
 
     // Perform FFT only if ADC has collected "enough number" of data points (say, 32768 points)
-    if (countDataAcq >= 1 && ((countDataAcq % FFT_SIZE) == 0))
+    if (countDataAcq == FFT_SIZE) // if (countDataAcq >= 1 && ((countDataAcq % FFT_SIZE) == 0))
     {
 
       // increse the number of FFT execution by 1
@@ -221,12 +234,6 @@ int main(int argc, char *argv[])
 
       // reset count number of ADC data acquisition
       countDataAcq = 0;
-
-      // t1 = time(NULL);
-      // nPtr = localtime(&t1);
-
-      // Mark start time
-      // START = clock();
 
       HRRR_I.RespRate = 0;
       HRRR_I.HrtRate = 0;
@@ -254,32 +261,26 @@ int main(int argc, char *argv[])
       // HRRR_Q = SIL_get_HRRR(FFT_STAGE, FFT_SIZE, Q_Signal, fs, SpctmFreq, SpctmValue_Q_chl, aryRF, 1);
       HRRR_MOD_IQ = SIL_get_HRRR(FFT_STAGE, FFT_SIZE, Mod_IQ, fs, SpctmFreq, SpctmValue_Mod_IQ, aryRF, 1);
 
-      // Mark end time
-      // END = clock();
-
-      // Show processing time
-      // printf("FFT costs %6.3f s! \n", (END - START) / CLOCKS_PER_SEC);
-
       // printf("I_chl RR:%d,HR:%d\n", HRRR_I.RespRate, HRRR_I.HrtRate);
       // printf("Q_chl RR:%d,HR:%d\n", HRRR_Q.RespRate, HRRR_Q.HrtRate);
       printf("IQ-Demod RR:%u,HR:%u, Motion:%u\n", HRRR_MOD_IQ.RespRate, HRRR_MOD_IQ.HrtRate, isMmotionDetected);
 
+      // Serial output RR/HR data
       sprintf(serial_Data, "@R%u,%u,%u\n", HRRR_MOD_IQ.RespRate, HRRR_MOD_IQ.HrtRate, isMmotionDetected);
       serWrite(SerialStatus, serial_Data, strlen(serial_Data) + 1);
       // memset(serial_Data, 0, 40);
 
-      // use this one
+      // Output RR/HR data to csv file
       //  fprintf(pFile_HRRR, "%d,%u,%u\n", num_FFT_exec, HRRR_MOD_IQ.RespRate, HRRR_MOD_IQ.HrtRate);
 
       // Dprecated!
       // fprintf(pFile_HRRR, "%d,%d,%d,%d,%d,%d,%d\n", num_FFT_exec, HRRR_I.RespRate, HRRR_I.HrtRate, HRRR_Q.RespRate, HRRR_Q.HrtRate, HRRR_MOD_IQ.RespRate, HRRR_MOD_IQ.HrtRate);
       // fprintf(pFile_HRRR, "%d,%d,%d\n", num_FFT_exec, HRRR_Q.RespRate, HRRR_Q.HrtRate);
 
-      // Output data to csv file
-      // Serial output the spectrum
-
+      // Serial output FFT spectrum data
       for (int index_freq = 0; index_freq < index_freq_max; index_freq++)
       {
+        // Output spectrum data to csv file
         // fprintf(pFile_FFT, "%d,%6.4f,%6.3f,%6.3f,%f\n", index_freq, SpctmFreq[index_freq], SpctmValue_I_chl[index_freq], SpctmValue_Q_chl[index_freq], SpctmValue_Mod_IQ[index_freq]);
 
         if (index_freq == 0)
@@ -306,16 +307,18 @@ int main(int argc, char *argv[])
       // NOTE! TO BE DELETED! Datalog function will be moved to PC S/W
       if (num_FFT_exec >= 1 && num_FFT_exec < max_time)
       {
-        // Get current time, and generate datalog file name
+        // Generate 2nd~ final datalog file name
+        /*
         t1 = time(NULL);
         nPtr = localtime(&t1);
+
         strftime(strAry_filename_rawdata, 64, "Datalog/%Y_%m%d_%H%M%S_rawdata.csv", nPtr);
         strftime(strary_filename_FFT, 64, "Datalog/%Y_%m%d_%H%M%S_FFT.csv", nPtr);
-        // strftime(strary_filename_HRRR, 64, "Datalog/%Y_%m%d_%H%M%S_HRRR.csv", nPtr);
 
         // pFile_ADC = fopen(strAry_filename_rawdata, "w");
         // pFile_FFT = fopen(strary_filename_FFT, "w");
         // pFile_HRRR = fopen(strary_filename_HRRR, "w");
+        */
 
         // reset spectrum X-axis and Y-axis datas
         memset(SpctmFreq, 0, FFT_SIZE);
@@ -361,10 +364,10 @@ void ISR_ADC(int gpio, int level, uint32_t tick)
     // Here, the IQ complex signal= sqrt(I^2+Q^2)
     // However, it should be ADC1-avg_1, but the average value avg_1,avg_2 is still unknown at this time
     // so it lacks the DC offset calibration process
-    //  ADC_Mod_IQ = sqrt(pow(aData_ADC[1]-avg_1, 2) + pow(aData_ADC[2]-avg2, 2));
+    // ADC_Mod_IQ = sqrt(pow(aData_ADC[1]-avg_1, 2) + pow(aData_ADC[2]-avg2, 2));
     // ADC_Mod_IQ = sqrt(pow(aData_ADC[1], 2) + pow(aData_ADC[2], 2));
 
-    /*Datalog: use fprintf to save data*/
+    // Datalog: use fprintf to save data
     // fprintf(pFile_ADC, "%6.3f,%6.3f,%6.3f\n", aData_ADC[1], aData_ADC[2], ADC_Mod_IQ);
 
     /*
