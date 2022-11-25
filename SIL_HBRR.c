@@ -8,7 +8,7 @@
 #include "./includes/ADS131A0X/ADS131A0x.h"
 #include "FFT_SIL.h"
 
-#define SIZE_SERIAL_BUFFER 10
+#define SIZE_SERIAL_BUFFER 40
 
 //======FFT parameters====
 // FFT_STAGE=15, FFT_SIZE=2^15=32768
@@ -17,7 +17,7 @@
 // uint32_t FFT_size = (1u << FFT_STAGE);
 
 // Input data array (from ADC, only real number)
-double Volt_I[FFT_SIZE], Volt_Q[FFT_SIZE];
+double Volt_I[FFT_SIZE], Volt_Q[FFT_SIZE], Volt_Mod_IQ[FFT_SIZE];
 double avg_I = 0.0, avg_Q = 0.0;
 double max_I = 0.0, max_Q = 0.0;
 
@@ -45,21 +45,14 @@ vital_t HRRR_I, HRRR_Q, HRRR_MOD_IQ;
 int status_ISR_Register;
 
 //===============General purpose parameters===============
-char DataIn[SIZE_SERIAL_BUFFER]; // Serial in data buffer;
-char arySerialOutMsg[100] = {0}; // Traditional C char array for serial communication about ADS131A04 SysCmd
 
 // loop count
-uint8_t isBufferAvailable = 0;
 uint32_t countDataAcq = 0;
-// uint32_t countWhileLoop = 0;
-// uint32_t countDataAcq_Th = 500 * 10;
-// loop wait time
-int time_message_wait; // milliseconds
-int time_loop_halt;    // milliseconds
-double START, END;     // for calculating processing time
 
-uint8_t Status_SerialOut; // Flag to start reading (Status_SerialOut:1=>output on;   Status_SerialOut:0=>output off!)
-uint8_t Size_Serial;
+// for calculating processing time
+time_t t1;       //  Declare a "time_t" type variable
+struct tm *nPtr; // Declare a "struct tm" type pointer
+double START, END;
 
 // ADC 4-channel current data
 float aData_ADC[4] = {0};
@@ -70,15 +63,16 @@ FILE *pFile_ADC, *pFile_FFT, *pFile_HRRR;
 char strAry_filename_rawdata[64] = {};
 char strary_filename_FFT[64] = {};
 char strary_filename_HRRR[64] = {};
+
 //=============Serial UART===========
 int SerialStatus = -1;
-char serial_Data[40] = {0};
+uint32_t serial_buffer_size;
+int residue;
+// char serial_Data[40] = {0};
+char serial_Data[SIZE_SERIAL_BUFFER] = {0};
 char serial_Msg[40] = {0};
 char serial_Spctm[40] = {0};
 //===============General purpose Functions Declaration====================
-
-time_t t1;       //  Declare a "time_t" type variable
-struct tm *nPtr; // Declare a "struct tm" type pointer
 
 void ISR_ADC(int gpio, int level, uint32_t tick);
 
@@ -92,22 +86,22 @@ int main(int argc, char *argv[])
   // printf("argc=%d,", argc);
   // printf("argv=%s,%s,%s\n", argv[0], argv[1], argv[2]);
 
-  // When user execute the program by typing "sudo ./SIL_HBRR 3 77",
-  // the first argument argv[0] is program 's name "./SIL_HBRR",
-  // and the second argument argv[1] is "3"
-  // and the third argument argv[2] is "77" ,and so on...
+  /*
+  When user execute the program by typing "sudo ./SIL_HBRR 3 77",
+  the first argument argv[0] is program 's name "./SIL_HBRR",
+  and the second argument argv[1] is "3"
+  and the third argument argv[2] is "77" ,and so on...
+  */
 
   if (argc == 2)
     max_time = atoi(argv[1]);
   else
     max_time = 300;
 
-  t1 = time(NULL);
-  nPtr = localtime(&t1);
-
-  // Get current time, and generate "the first" datalog file name
-  // Format tm type to string literal
   /*
+  // Generate 1st datalog file name
+  t1 = time(NULL);// Format tm type to string literal
+  nPtr = localtime(&t1);
   strftime(strAry_filename_rawdata, 64, "Datalog/%Y_%m%d_%H%M%S_rawdata.csv", nPtr);
   strftime(strary_filename_FFT, 64, "Datalog/%Y_%m%d_%H%M%S_FFT.csv", nPtr);
   strftime(strary_filename_HRRR, 64, "Datalog/%Y_%m%d_%H%M%S_HRRR.csv", nPtr);
@@ -115,10 +109,9 @@ int main(int argc, char *argv[])
   pFile_ADC = fopen(strAry_filename_rawdata, "w");
   pFile_FFT = fopen(strary_filename_FFT, "w");
   pFile_HRRR = fopen(strary_filename_HRRR, "w");
-  */
-
   // Generate column name for HRRR file
-  // fprintf(pFile_HRRR, "%s,%s,%s\n", "NUM", "IQ_RR", "IQ_HR");
+  fprintf(pFile_HRRR, "%s,%s,%s\n", "NUM", "IQ_RR", "IQ_HR");
+  */
 
   // pigpio.h initializing Function
   if (gpioInitialise() < 0)
@@ -130,6 +123,8 @@ int main(int argc, char *argv[])
   {
     printf("pigpio initialize success!\n");
   }
+
+  serial_buffer_size = (uint32_t)(fs / 10.0);
 
   // pigpio library: Open new Com port, and save its handle variable
   SerialStatus = serOpen("/dev/ttyAMA1", 115200, 0);
@@ -152,10 +147,6 @@ int main(int argc, char *argv[])
 
   // Initialize SPI with CS=0,speed=2MHz (SPI Mode is fixed to Mode1)
   ADS131A0x_setSPI(CS_0, 2000000);
-
-  // Simulation
-  isBufferAvailable = 1; // unused
-  DataIn[0] = 'S';       // unused
 
   // Follwoing part should be put inside the while loop,
   // and it would start acquiring data after get "START" command form keyboard or RS-232 "%S"
@@ -201,7 +192,26 @@ int main(int argc, char *argv[])
   // while (1)
   while (num_FFT_exec < max_time)
   {
-    // Continuously detect GPIO interruption until gathering FFT_SIZE points data from ADC.
+    if (countDataAcq >= 1 && ((countDataAcq % serial_buffer_size) == 0))
+    {
+      for (int i = countDataAcq - serial_buffer_size; i < countDataAcq; i++)
+      {
+        sprintf(serial_Data, "@D%4.2f,%4.2f,%4.2f\n", Volt_I[i], Volt_Q[i], Volt_Mod_IQ[i]);
+        serWrite(SerialStatus, serial_Data, strlen(serial_Data) + 1);
+      }
+    }
+    else if (countDataAcq == FFT_SIZE)
+    {
+
+      residue = FFT_SIZE % serial_buffer_size;
+      for (int i = FFT_SIZE - residue; i < countDataAcq; i++)
+      {
+        // ex: i= 32768-18=32750; i<32768;i++
+        sprintf(serial_Data, "@D%4.2f,%4.2f,%4.2f\n", Volt_I[i], Volt_Q[i], Volt_Mod_IQ[i]);
+        serWrite(SerialStatus, serial_Data, strlen(serial_Data) + 1);
+      }
+    }
+
     // Perform FFT only if ADC has collected "enough number" of data points (say, 32768 points)
     if (countDataAcq >= 1 && ((countDataAcq % FFT_SIZE) == 0))
     {
@@ -346,21 +356,26 @@ void ISR_ADC(int gpio, int level, uint32_t tick)
     Volt_I[countDataAcq] = aData_ADC[1]; // channel 2
     Volt_Q[countDataAcq] = aData_ADC[2]; // channel 3
 
+    Volt_Mod_IQ[countDataAcq] = sqrt(pow(aData_ADC[1], 2) + pow(aData_ADC[2], 2));
+
     // Here, the IQ complex signal= sqrt(I^2+Q^2)
     // However, it should be ADC1-avg_1, but the average value avg_1,avg_2 is still unknown at this time
     // so it lacks the DC offset calibration process
     //  ADC_Mod_IQ = sqrt(pow(aData_ADC[1]-avg_1, 2) + pow(aData_ADC[2]-avg2, 2));
-    ADC_Mod_IQ = sqrt(pow(aData_ADC[1], 2) + pow(aData_ADC[2], 2));
+    // ADC_Mod_IQ = sqrt(pow(aData_ADC[1], 2) + pow(aData_ADC[2], 2));
 
-    // CHANGE to "fwrite()"" would be faster if output data total length longer than 5 cahracter, e.g. "56789"=5Bytes,
-    // but fwrite use its integer size, i.e. "1"=4Bytes, "56789" still = 4Bytes!
+    /*Datalog: use fprintf to save data*/
     // fprintf(pFile_ADC, "%6.3f,%6.3f,%6.3f\n", aData_ADC[1], aData_ADC[2], ADC_Mod_IQ);
 
     /*
-    sprintf(serial_Data, "@D%7.3f,%7.3f,%7.3f\n", aData_ADC[1], aData_ADC[2], ADC_Mod_IQ);
-    serWrite(SerialStatus, serial_Data, strlen(serial_Data) + 1);
-    // memset(serial_Data, 0, 40);
+    NOTE: use "fwrite()"" would be faster if output data total length longer than 5 cahracter,
+    e.g. "56789"=5Bytes, but fwrite use its integer size, i.e. "1"=4Bytes, "56789" still = 4Bytes!
     */
+
+    /*Serial output*/
+    // sprintf(serial_Data, "@D%7.3f,%7.3f,%7.3f\n", aData_ADC[1], aData_ADC[2], ADC_Mod_IQ);
+    // serWrite(SerialStatus, serial_Data, strlen(serial_Data) + 1);
+    // memset(serial_Data, 0, 40);
 
     countDataAcq++;
 
