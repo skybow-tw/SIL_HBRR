@@ -9,12 +9,15 @@
 #include "FFT_SIL.h"
 
 #define SIZE_SERIAL_BUFFER 40
+#define ADC_BUFFER_SIZE 5
+#define ADC_SAMPLE_RATE 500.0 // smapling rate(Hz)
 
 //======FFT parameters====
 // FFT_STAGE=15, FFT_SIZE=2^15=32768
 #define FFT_STAGE 15
-#define FFT_SIZE 32768
-// uint32_t FFT_size = (1u << FFT_STAGE);
+#define FFT_SIZE 32768 // FFT_size = (1u << FFT_STAGE)
+
+uint16_t flag_FFT = 0;
 
 // Input data array (from ADC, only real number)
 double Volt_I[FFT_SIZE], Volt_Q[FFT_SIZE];
@@ -30,17 +33,18 @@ double thr_Motion = 0.01; // threshold of motiion detection from time-domain sig
 uint32_t max_time;
 uint32_t num_FFT_exec = 0;
 
-double fs = 500.0; // smapling rate (Hz)
-
 double SpctmFreq[FFT_SIZE];
 double SpctmValue_I_chl[FFT_SIZE], SpctmValue_Q_chl[FFT_SIZE], SpctmValue_Mod_IQ[FFT_SIZE];
 
 double *aryTF = NULL;
 complex_t *aryRF = NULL;
 
+// index of current SpctmFreq[i] for serial output
+int index_freq = 0;
+
 // The maximum index of SpctmFreq[i] of FFT spectrum
-int index_freq_max = FFT_SIZE / 2; // Nyquist frequency = fs/2
-//  index_freq_max = 3.0 / (fs / N); //for RRHR only (0Hz ~ 3Hz) ; since FFT resolution= fs/N, if max. freq= 3Hz, index_max= 3/(fs/N)=3.0/0.01526 = 196.59 ~=197th
+
+int index_freq_max;
 
 vital_t HRRR_I, HRRR_Q, HRRR_MOD_IQ;
 
@@ -73,10 +77,11 @@ int SerialStatus = -1;
 char serial_Data[SIZE_SERIAL_BUFFER] = {0};
 char serial_Msg[SIZE_SERIAL_BUFFER] = {0};
 char serial_Spctm[SIZE_SERIAL_BUFFER] = {0};
+double buffer1[ADC_BUFFER_SIZE] = {0.0};
+double buffer2[ADC_BUFFER_SIZE] = {0.0};
+double buffer3[ADC_BUFFER_SIZE] = {0.0};
+uint32_t index_ADC_buffer;
 
-uint32_t serial_buffer_size;
-double serial_ADC_buffer[50];
-int residue;
 //===============General purpose Functions Declaration====================
 
 void ISR_ADC(int gpio, int level, uint32_t tick);
@@ -102,6 +107,15 @@ int main(int argc, char *argv[])
     max_time = atoi(argv[1]);
   else
     max_time = 300;
+
+  // for RRHR only (0Hz ~ 3Hz) ; since FFT resolution= fs/N, if max. freq= 3Hz, index_max= 3/(fs/N)=3.0/0.01526 = 196.59 ~=197th
+  // index_freq_max = (int)(3.0 / (ADC_SAMPLE_RATE / FFT_SIZE) + 0.5);
+  index_freq_max = round(3.0 / (ADC_SAMPLE_RATE / FFT_SIZE));
+
+  // Nyquist frequency = fs/2
+  // index_freq_max = FFT_SIZE / 2;
+
+  printf("Freq max= %d\n", index_freq_max);
 
   /*
   // Generate 1st datalog file name
@@ -129,8 +143,6 @@ int main(int argc, char *argv[])
   {
     printf("pigpio initialize success!\n");
   }
-
-  serial_buffer_size = (uint32_t)(fs / 10.0);
 
   // pigpio library: Open new Com port, and save its handle variable
   SerialStatus = serOpen("/dev/ttyAMA1", 115200, 0);
@@ -205,28 +217,20 @@ int main(int argc, char *argv[])
   // while (1)
   while (num_FFT_exec < max_time)
   {
-    if (countDataAcq >= 1 && ((countDataAcq % serial_buffer_size) == 0))
-    {
-      for (int i = countDataAcq - serial_buffer_size; i < countDataAcq; i++)
-      {
-        sprintf(serial_Data, "@D%4.2f,%4.2f,%4.2f\n", Volt_I[i], Volt_Q[i], Volt_Mod_IQ[i]);
-        serWrite(SerialStatus, serial_Data, strlen(serial_Data) + 1);
-      }
-    }
-    else if (countDataAcq == FFT_SIZE)
+
+    /*
+    if ((countDataAcq >= 1) && ((countDataAcq % ADC_BUFFER_SIZE) == 0))
     {
 
-      residue = FFT_SIZE % serial_buffer_size;
-      for (int i = FFT_SIZE - residue; i < countDataAcq; i++)
+      for (int i = 0; i < ADC_BUFFER_SIZE; i++)
       {
-        // ex: i= 32768-18=32750; i<32768;i++
-        sprintf(serial_Data, "@D%4.2f,%4.2f,%4.2f\n", Volt_I[i], Volt_Q[i], Volt_Mod_IQ[i]);
+        sprintf(serial_Data, "@D%6.2f,%6.2f,%6.2f\n", buffer1[i], buffer2[i], buffer3[i]);
         serWrite(SerialStatus, serial_Data, strlen(serial_Data) + 1);
       }
-    }
+    }*/
 
     // Perform FFT only if ADC has collected "enough number" of data points (say, 32768 points)
-    if (countDataAcq == FFT_SIZE) // if (countDataAcq >= 1 && ((countDataAcq % FFT_SIZE) == 0))
+    if (flag_FFT == 1)
     {
 
       // increse the number of FFT execution by 1
@@ -259,7 +263,7 @@ int main(int argc, char *argv[])
 
       // HRRR_I = SIL_get_HRRR(FFT_STAGE, FFT_SIZE, I_Signal, fs, SpctmFreq, SpctmValue_I_chl, aryRF, 1);
       // HRRR_Q = SIL_get_HRRR(FFT_STAGE, FFT_SIZE, Q_Signal, fs, SpctmFreq, SpctmValue_Q_chl, aryRF, 1);
-      HRRR_MOD_IQ = SIL_get_HRRR(FFT_STAGE, FFT_SIZE, Mod_IQ, fs, SpctmFreq, SpctmValue_Mod_IQ, aryRF, 1);
+      HRRR_MOD_IQ = SIL_get_HRRR(FFT_STAGE, FFT_SIZE, Mod_IQ, ADC_SAMPLE_RATE, SpctmFreq, SpctmValue_Mod_IQ, aryRF, 1);
 
       // printf("I_chl RR:%d,HR:%d\n", HRRR_I.RespRate, HRRR_I.HrtRate);
       // printf("Q_chl RR:%d,HR:%d\n", HRRR_Q.RespRate, HRRR_Q.HrtRate);
@@ -270,38 +274,14 @@ int main(int argc, char *argv[])
       serWrite(SerialStatus, serial_Data, strlen(serial_Data) + 1);
       // memset(serial_Data, 0, 40);
 
+      flag_FFT = 2;
+
       // Output RR/HR data to csv file
       //  fprintf(pFile_HRRR, "%d,%u,%u\n", num_FFT_exec, HRRR_MOD_IQ.RespRate, HRRR_MOD_IQ.HrtRate);
 
       // Dprecated!
       // fprintf(pFile_HRRR, "%d,%d,%d,%d,%d,%d,%d\n", num_FFT_exec, HRRR_I.RespRate, HRRR_I.HrtRate, HRRR_Q.RespRate, HRRR_Q.HrtRate, HRRR_MOD_IQ.RespRate, HRRR_MOD_IQ.HrtRate);
       // fprintf(pFile_HRRR, "%d,%d,%d\n", num_FFT_exec, HRRR_Q.RespRate, HRRR_Q.HrtRate);
-
-      // Serial output FFT spectrum data
-      for (int index_freq = 0; index_freq < index_freq_max; index_freq++)
-      {
-        // Output spectrum data to csv file
-        // fprintf(pFile_FFT, "%d,%6.4f,%6.3f,%6.3f,%f\n", index_freq, SpctmFreq[index_freq], SpctmValue_I_chl[index_freq], SpctmValue_Q_chl[index_freq], SpctmValue_Mod_IQ[index_freq]);
-
-        if (index_freq == 0)
-        {
-          sprintf(serial_Spctm, "@F0,%6.4f,%f\n", SpctmFreq[index_freq], SpctmValue_Mod_IQ[index_freq]);
-          serWrite(SerialStatus, serial_Spctm, strlen(serial_Spctm) + 1);
-          // memset(serial_Spctm, 0, 40);
-        }
-        else if (index_freq > 0 && index_freq < index_freq_max - 1)
-        {
-          sprintf(serial_Spctm, "@F1,%6.4f,%f\n", SpctmFreq[index_freq], SpctmValue_Mod_IQ[index_freq]);
-          serWrite(SerialStatus, serial_Spctm, strlen(serial_Spctm) + 1);
-          // memset(serial_Spctm, 0, 40);
-        }
-        else if (index_freq == (index_freq_max - 1))
-        {
-          sprintf(serial_Spctm, "@F2,%6.4f,%f\n", SpctmFreq[index_freq], SpctmValue_Mod_IQ[index_freq]);
-          serWrite(SerialStatus, serial_Spctm, strlen(serial_Spctm) + 1);
-          // memset(serial_Spctm, 0, 40);
-        }
-      }
 
       // open new file for next round datalog (rawdata and FFT analysis result)
       // NOTE! TO BE DELETED! Datalog function will be moved to PC S/W
@@ -321,13 +301,13 @@ int main(int argc, char *argv[])
         */
 
         // reset spectrum X-axis and Y-axis datas
+        /*
         memset(SpctmFreq, 0, FFT_SIZE);
         memset(SpctmValue_I_chl, 0, FFT_SIZE);
         memset(SpctmValue_Q_chl, 0, FFT_SIZE);
         memset(SpctmValue_Mod_IQ, 0, FFT_SIZE);
+        */
       }
-      // end
-      // }
     }
   }
   // close file reference
@@ -355,17 +335,26 @@ void ISR_ADC(int gpio, int level, uint32_t tick)
   // level=0 means Falling Edge
   if (level == 0)
   {
+
     ADS131A0x_GetADCData(1, aData_ADC);  // Mode1= Real ADC
     Volt_I[countDataAcq] = aData_ADC[1]; // channel 2
     Volt_Q[countDataAcq] = aData_ADC[2]; // channel 3
 
-    Volt_Mod_IQ[countDataAcq] = sqrt(pow(aData_ADC[1], 2) + pow(aData_ADC[2], 2));
+    // Volt_Mod_IQ[countDataAcq] = sqrt(pow(aData_ADC[1], 2) + pow(aData_ADC[2], 2));
+
+    /*
+    index_ADC_buffer = countDataAcq % ADC_BUFFER_SIZE;
+
+    buffer1[index_ADC_buffer] = Volt_I[countDataAcq];
+    buffer2[index_ADC_buffer] = Volt_Q[countDataAcq];
+    buffer3[index_ADC_buffer] = Volt_Mod_IQ[countDataAcq];
+    */
 
     // Here, the IQ complex signal= sqrt(I^2+Q^2)
     // However, it should be ADC1-avg_1, but the average value avg_1,avg_2 is still unknown at this time
     // so it lacks the DC offset calibration process
     // ADC_Mod_IQ = sqrt(pow(aData_ADC[1]-avg_1, 2) + pow(aData_ADC[2]-avg2, 2));
-    // ADC_Mod_IQ = sqrt(pow(aData_ADC[1], 2) + pow(aData_ADC[2], 2));
+    ADC_Mod_IQ = sqrt(pow(aData_ADC[1], 2) + pow(aData_ADC[2], 2));
 
     // Datalog: use fprintf to save data
     // fprintf(pFile_ADC, "%6.3f,%6.3f,%6.3f\n", aData_ADC[1], aData_ADC[2], ADC_Mod_IQ);
@@ -376,11 +365,17 @@ void ISR_ADC(int gpio, int level, uint32_t tick)
     */
 
     /*Serial output*/
-    // sprintf(serial_Data, "@D%7.3f,%7.3f,%7.3f\n", aData_ADC[1], aData_ADC[2], ADC_Mod_IQ);
-    // serWrite(SerialStatus, serial_Data, strlen(serial_Data) + 1);
+    sprintf(serial_Data, "@D%6.3f,%6.3f,%6.3f\n", aData_ADC[1], aData_ADC[2], ADC_Mod_IQ);
+    serWrite(SerialStatus, serial_Data, strlen(serial_Data) + 1);
     // memset(serial_Data, 0, 40);
 
     countDataAcq++;
+
+    if (countDataAcq == FFT_SIZE)
+    {
+      flag_FFT = 1;
+      countDataAcq = 0;
+    }
 
     if ((countDataAcq % 500) == 0)
     {
@@ -392,6 +387,53 @@ void ISR_ADC(int gpio, int level, uint32_t tick)
       serWrite(SerialStatus, serial_Msg, strlen(serial_Msg) + 1);
       memset(serial_Msg, 0, 40);
       */
+    }
+
+    if (flag_FFT == 2)
+    {
+      // Serial output FFT spectrum data
+
+      if (index_freq == 0)
+        sprintf(serial_Spctm, "@F0,%6.4f,%f\n", SpctmFreq[index_freq], SpctmValue_Mod_IQ[index_freq]);
+      else if (index_freq > 0 && index_freq < index_freq_max - 1)
+        sprintf(serial_Spctm, "@F1,%6.4f,%f\n", SpctmFreq[index_freq], SpctmValue_Mod_IQ[index_freq]);
+      else if (index_freq == (index_freq_max - 1))
+        sprintf(serial_Spctm, "@F2,%6.4f,%f\n", SpctmFreq[index_freq], SpctmValue_Mod_IQ[index_freq]);
+
+      serWrite(SerialStatus, serial_Spctm, strlen(serial_Spctm) + 1);
+      index_freq++;
+
+      if (index_freq == index_freq_max)
+      {
+        printf("FFT Spectrum output OK!\n");
+        flag_FFT = 0;
+        index_freq = 0;
+      }
+      /*
+      for (int index_freq = 0; index_freq < index_freq_max; index_freq++)
+      {
+        // Output spectrum data to csv file
+        // fprintf(pFile_FFT, "%d,%6.4f,%6.3f,%6.3f,%f\n", index_freq, SpctmFreq[index_freq], SpctmValue_I_chl[index_freq], SpctmValue_Q_chl[index_freq], SpctmValue_Mod_IQ[index_freq]);
+
+        if (index_freq == 0)
+        {
+          sprintf(serial_Spctm, "@F0,%6.4f,%f\n", SpctmFreq[index_freq], SpctmValue_Mod_IQ[index_freq]);
+          serWrite(SerialStatus, serial_Spctm, strlen(serial_Spctm) + 1);
+          // memset(serial_Spctm, 0, 40);
+        }
+        else if (index_freq > 0 && index_freq < index_freq_max - 1)
+        {
+          sprintf(serial_Spctm, "@F1,%6.4f,%f\n", SpctmFreq[index_freq], SpctmValue_Mod_IQ[index_freq]);
+          serWrite(SerialStatus, serial_Spctm, strlen(serial_Spctm) + 1);
+          // memset(serial_Spctm, 0, 40);
+        }
+        else if (index_freq == (index_freq_max - 1))
+        {
+          sprintf(serial_Spctm, "@F2,%6.4f,%f\n", SpctmFreq[index_freq], SpctmValue_Mod_IQ[index_freq]);
+          serWrite(SerialStatus, serial_Spctm, strlen(serial_Spctm) + 1);
+          // memset(serial_Spctm, 0, 40);
+        }
+      }*/
     }
   }
 }
