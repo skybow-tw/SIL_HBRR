@@ -337,8 +337,8 @@ void ISR_ADC(int gpio, int level, uint32_t tick)
   {
 
     ADS131A0x_GetADCData(1, aData_ADC);  // Mode1= Real ADC
-    Volt_I[countDataAcq] = aData_ADC[1]; // channel 2
-    Volt_Q[countDataAcq] = aData_ADC[2]; // channel 3
+    Volt_I[countDataAcq] = aData_ADC[0]; // channel 1
+    Volt_Q[countDataAcq] = aData_ADC[1]; // channel 2
 
     // Volt_Mod_IQ[countDataAcq] = sqrt(pow(aData_ADC[1], 2) + pow(aData_ADC[2], 2));
 
@@ -354,7 +354,7 @@ void ISR_ADC(int gpio, int level, uint32_t tick)
     // However, it should be ADC1-avg_1, but the average value avg_1,avg_2 is still unknown at this time
     // so it lacks the DC offset calibration process
     // ADC_Mod_IQ = sqrt(pow(aData_ADC[1]-avg_1, 2) + pow(aData_ADC[2]-avg2, 2));
-    ADC_Mod_IQ = sqrt(pow(aData_ADC[1], 2) + pow(aData_ADC[2], 2));
+    ADC_Mod_IQ = sqrt(pow(Volt_I[countDataAcq], 2) + pow(Volt_Q[countDataAcq], 2));
 
     // Datalog: use fprintf to save data
     // fprintf(pFile_ADC, "%6.3f,%6.3f,%6.3f\n", aData_ADC[1], aData_ADC[2], ADC_Mod_IQ);
@@ -365,7 +365,7 @@ void ISR_ADC(int gpio, int level, uint32_t tick)
     */
 
     /*Serial output*/
-    sprintf(serial_Data, "@D%6.3f,%6.3f,%6.3f\n", aData_ADC[1], aData_ADC[2], ADC_Mod_IQ);
+    sprintf(serial_Data, "@D%6.3f,%6.3f,%6.3f\n", Volt_I[countDataAcq], Volt_Q[countDataAcq], ADC_Mod_IQ);
     serWrite(SerialStatus, serial_Data, strlen(serial_Data) + 1);
     // memset(serial_Data, 0, 40);
 
