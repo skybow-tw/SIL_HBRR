@@ -40,7 +40,7 @@ double *aryTF = NULL;
 complex_t *aryRF = NULL;
 
 // index of current SpctmFreq[i] for serial output
-int index_freq = 0;
+int index_freq;
 
 // The maximum index of SpctmFreq[i] of FFT spectrum
 
@@ -104,14 +104,15 @@ int main(int argc, char *argv[])
   else
     max_time = 300;
 
+  index_freq = 0;
+
   // for RRHR only (0Hz ~ 3Hz) ; since FFT resolution= fs/N, if max. freq= 3Hz, index_max= 3/(fs/N)=3.0/0.01526 = 196.59 ~=197th
-  // index_freq_max = (int)(3.0 / (ADC_SAMPLE_RATE / FFT_SIZE) + 0.5);
   index_freq_max = round(3.0 / (ADC_SAMPLE_RATE / FFT_SIZE));
 
   // Nyquist frequency = fs/2
   // index_freq_max = FFT_SIZE / 2;
 
-  printf("Freq max= %d\n", index_freq_max);
+  // printf("Freq max= %d\n", index_freq_max);
 
   /*
   // Generate 1st datalog file name
@@ -344,13 +345,7 @@ void ISR_ADC(int gpio, int level, uint32_t tick)
     serWrite(SerialStatus, serial_Data, strlen(serial_Data) + 1);
     // memset(serial_Data, 0, 40);
 
-    countDataAcq++;
-
-    if (countDataAcq == FFT_SIZE)
-    {
-      flag_FFT = 1;
-      countDataAcq = 0;
-    }
+    countDataAcq++; // increse ADC data count number
 
     if ((countDataAcq % 500) == 0)
     {
@@ -364,10 +359,22 @@ void ISR_ADC(int gpio, int level, uint32_t tick)
       */
     }
 
+    if (countDataAcq == FFT_SIZE)
+    {
+      flag_FFT = 1;
+      countDataAcq = 0;
+    }
+
     if (flag_FFT == 2)
     {
-      // Serial output FFT spectrum data
 
+      flag_FFT = 0;
+      // Serial output FFT spectrum data
+      // NOTE: This would results in an obvious delay of GUI chart displaying of ADC datas output,
+      // the reason is still uncertain, it might be the size of the spectrum magnitude are too large, say, >1,000,000
+
+      /*
+      //METHOD 1: Divide and conquer
       if (index_freq == 0)
         sprintf(serial_Spctm, "@F0,%6.4f,%f\n", SpctmFreq[index_freq], SpctmValue_Mod_IQ[index_freq]);
       else if (index_freq > 0 && index_freq < index_freq_max - 1)
@@ -376,15 +383,19 @@ void ISR_ADC(int gpio, int level, uint32_t tick)
         sprintf(serial_Spctm, "@F2,%6.4f,%f\n", SpctmFreq[index_freq], SpctmValue_Mod_IQ[index_freq]);
 
       serWrite(SerialStatus, serial_Spctm, strlen(serial_Spctm) + 1);
+
+
       index_freq++;
 
       if (index_freq == index_freq_max)
       {
-        printf("FFT Spectrum output OK!\n");
+        // printf("FFT Spectrum output OK!\n");
         flag_FFT = 0;
         index_freq = 0;
-      }
+      }*/
+
       /*
+      //METHOD 2: Too time-consuming
       for (int index_freq = 0; index_freq < index_freq_max; index_freq++)
       {
         // Output spectrum data to csv file
