@@ -77,10 +77,6 @@ int SerialStatus = -1;
 char serial_Data[SIZE_SERIAL_BUFFER] = {0};
 char serial_Msg[SIZE_SERIAL_BUFFER] = {0};
 char serial_Spctm[SIZE_SERIAL_BUFFER] = {0};
-double buffer1[ADC_BUFFER_SIZE] = {0.0};
-double buffer2[ADC_BUFFER_SIZE] = {0.0};
-double buffer3[ADC_BUFFER_SIZE] = {0.0};
-uint32_t index_ADC_buffer;
 
 //===============General purpose Functions Declaration====================
 
@@ -217,18 +213,6 @@ int main(int argc, char *argv[])
   // while (1)
   while (num_FFT_exec < max_time)
   {
-
-    /*
-    if ((countDataAcq >= 1) && ((countDataAcq % ADC_BUFFER_SIZE) == 0))
-    {
-
-      for (int i = 0; i < ADC_BUFFER_SIZE; i++)
-      {
-        sprintf(serial_Data, "@D%6.2f,%6.2f,%6.2f\n", buffer1[i], buffer2[i], buffer3[i]);
-        serWrite(SerialStatus, serial_Data, strlen(serial_Data) + 1);
-      }
-    }*/
-
     // Perform FFT only if ADC has collected "enough number" of data points (say, 32768 points)
     if (flag_FFT == 1)
     {
@@ -337,23 +321,14 @@ void ISR_ADC(int gpio, int level, uint32_t tick)
   {
 
     ADS131A0x_GetADCData(1, aData_ADC);  // Mode1= Real ADC
-    Volt_I[countDataAcq] = aData_ADC[0]; // channel 1
-    Volt_Q[countDataAcq] = aData_ADC[1]; // channel 2
+    Volt_I[countDataAcq] = aData_ADC[0]; // channel 0
+    Volt_Q[countDataAcq] = aData_ADC[1]; // channel 1
 
-    // Volt_Mod_IQ[countDataAcq] = sqrt(pow(aData_ADC[1], 2) + pow(aData_ADC[2], 2));
-
-    /*
-    index_ADC_buffer = countDataAcq % ADC_BUFFER_SIZE;
-
-    buffer1[index_ADC_buffer] = Volt_I[countDataAcq];
-    buffer2[index_ADC_buffer] = Volt_Q[countDataAcq];
-    buffer3[index_ADC_buffer] = Volt_Mod_IQ[countDataAcq];
-    */
+    // Volt_Mod_IQ[countDataAcq] = sqrt(pow(Volt_I[countDataAcq], 2) + pow(Volt_Q[countDataAcq], 2));
 
     // Here, the IQ complex signal= sqrt(I^2+Q^2)
     // However, it should be ADC1-avg_1, but the average value avg_1,avg_2 is still unknown at this time
     // so it lacks the DC offset calibration process
-    // ADC_Mod_IQ = sqrt(pow(aData_ADC[1]-avg_1, 2) + pow(aData_ADC[2]-avg2, 2));
     ADC_Mod_IQ = sqrt(pow(Volt_I[countDataAcq], 2) + pow(Volt_Q[countDataAcq], 2));
 
     // Datalog: use fprintf to save data
