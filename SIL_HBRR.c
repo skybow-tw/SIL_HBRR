@@ -108,27 +108,8 @@ int main(int argc, char *argv[])
 
   // for RRHR only (0Hz ~ 3Hz) ; since FFT resolution= fs/N, if max. freq= 3Hz, index_max= 3/(fs/N)=3.0/0.01526 = 196.59 ~=197th
   index_freq_max = round(3.0 / (ADC_SAMPLE_RATE / FFT_SIZE));
+  // index_freq_max = FFT_SIZE / 2; // Nyquist frequency = fs/2, so index_freq_max= 16384
 
-  // Nyquist frequency = fs/2
-  // index_freq_max = FFT_SIZE / 2;
-
-  // printf("Freq max= %d\n", index_freq_max);
-
-  /*
-  // Generate 1st datalog file name
-  t1 = time(NULL);// Format tm type to string literal
-  nPtr = localtime(&t1);
-  strftime(strAry_filename_rawdata, 64, "Datalog/%Y_%m%d_%H%M%S_rawdata.csv", nPtr);
-  strftime(strary_filename_FFT, 64, "Datalog/%Y_%m%d_%H%M%S_FFT.csv", nPtr);
-  strftime(strary_filename_HRRR, 64, "Datalog/%Y_%m%d_%H%M%S_HRRR.csv", nPtr);
-
-  pFile_ADC = fopen(strAry_filename_rawdata, "w");
-  pFile_FFT = fopen(strary_filename_FFT, "w");
-  pFile_HRRR = fopen(strary_filename_HRRR, "w");
-
-  // Generate column name for HRRR file
-  fprintf(pFile_HRRR, "%s,%s,%s\n", "NUM", "IQ_RR", "IQ_HR");
-  */
 
   // pigpio.h initializing Function
   if (gpioInitialise() < 0)
@@ -148,17 +129,6 @@ int main(int argc, char *argv[])
     printf("SERIAL open success at handle: %d!\n", SerialStatus);
   else
     printf("SERIAL open fail with error: %d!\n", SerialStatus); //-24= PI_NO_HANDLE, -72=PI_SER_OPEN_FAILED
-
-  // serial write test
-  /*
-  for (int i = 0; i < 100; i++)
-  {
-    sprintf(serial_Msg, "@D%6.3f\n", sin(i / 6.2832));
-    serWrite(SerialStatus, serial_Msg, 9);
-    usleep(50000);
-  }
-  */
-  // printf("SERIAL close success at handle: %d!\n", serClose(SerialStatus));
 
   // Initialize SPI with CS=0,speed=2MHz (SPI Mode is fixed to Mode1)
   ADS131A0x_setSPI(CS_0, 2000000);
@@ -199,10 +169,6 @@ int main(int argc, char *argv[])
 
   aryRF = GenRF(FFT_STAGE);
 
-  // TBD: it should be a thread that detect
-  // if the newest FFT_SIZE point in the circular buffer had been update?
-  // then it would do the FFT and RRHR analysis repeatedly
-
   /*
   //calculate processing time
   START = clock(); // Mark start time
@@ -210,6 +176,7 @@ int main(int argc, char *argv[])
   printf("FFT costs %6.3f s! \n", (END - START) / CLOCKS_PER_SEC); // Show processing time
   */
 
+  // TBD: To be replaced by a POSIX thread
   // START infinite loop
   while (1)
   // while (num_FFT_exec < max_time)
@@ -260,19 +227,8 @@ int main(int argc, char *argv[])
       // memset(serial_Data, 0, 40);
 
       flag_FFT = 2;
-
-      // Output RR/HR data to csv file
-      //  fprintf(pFile_HRRR, "%d,%u,%u\n", num_FFT_exec, HRRR_MOD_IQ.RespRate, HRRR_MOD_IQ.HrtRate);
-
-      // Dprecated!
-      // fprintf(pFile_HRRR, "%d,%d,%d,%d,%d,%d,%d\n", num_FFT_exec, HRRR_I.RespRate, HRRR_I.HrtRate, HRRR_Q.RespRate, HRRR_Q.HrtRate, HRRR_MOD_IQ.RespRate, HRRR_MOD_IQ.HrtRate);
-      // fprintf(pFile_HRRR, "%d,%d,%d\n", num_FFT_exec, HRRR_Q.RespRate, HRRR_Q.HrtRate);
-
-      // open new file for next round datalog (rawdata and FFT analysis result)
-      // NOTE! TO BE DELETED! Datalog function will be moved to PC S/W
     }
   }
-  
 
   // Disable interruption at GPIO_0 through calling  "gpioSetISRFunc" function again
   // by passing a NULL function pointer
