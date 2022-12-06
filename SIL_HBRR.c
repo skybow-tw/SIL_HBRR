@@ -211,8 +211,8 @@ int main(int argc, char *argv[])
   */
 
   // START infinite loop
-  // while (1)
-  while (num_FFT_exec < max_time)
+  while (1)
+  // while (num_FFT_exec < max_time)
   {
     // Perform FFT only if ADC has collected "enough number" of data points (say, 32768 points)
     if (flag_FFT == 1)
@@ -270,35 +270,9 @@ int main(int argc, char *argv[])
 
       // open new file for next round datalog (rawdata and FFT analysis result)
       // NOTE! TO BE DELETED! Datalog function will be moved to PC S/W
-      if (num_FFT_exec >= 1 && num_FFT_exec < max_time)
-      {
-        // Generate 2nd~ final datalog file name
-        /*
-        t1 = time(NULL);
-        nPtr = localtime(&t1);
-
-        strftime(strAry_filename_rawdata, 64, "Datalog/%Y_%m%d_%H%M%S_rawdata.csv", nPtr);
-        strftime(strary_filename_FFT, 64, "Datalog/%Y_%m%d_%H%M%S_FFT.csv", nPtr);
-
-        // pFile_ADC = fopen(strAry_filename_rawdata, "w");
-        // pFile_FFT = fopen(strary_filename_FFT, "w");
-        // pFile_HRRR = fopen(strary_filename_HRRR, "w");
-        */
-
-        // reset spectrum X-axis and Y-axis datas
-        /*
-        memset(SpctmFreq, 0, FFT_SIZE);
-        memset(SpctmValue_I_chl, 0, FFT_SIZE);
-        memset(SpctmValue_Q_chl, 0, FFT_SIZE);
-        memset(SpctmValue_Mod_IQ, 0, FFT_SIZE);
-        */
-      }
     }
   }
-  // close file reference
-  // fclose(pFile_ADC);
-  // fclose(pFile_FFT);
-  // fclose(pFile_HRRR);
+  
 
   // Disable interruption at GPIO_0 through calling  "gpioSetISRFunc" function again
   // by passing a NULL function pointer
