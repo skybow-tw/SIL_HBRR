@@ -21,7 +21,10 @@ uint16_t flag_FFT = 0;
 
 // Input data array (from ADC, only real number)
 double Volt_I[FFT_SIZE], Volt_Q[FFT_SIZE];
-double Volt_Mod_IQ[FFT_SIZE];
+// double Volt_Mod_IQ[FFT_SIZE];
+
+// complex_t I_Signal[FFT_SIZE], Q_Signal[FFT_SIZE];
+complex_t Mod_IQ[FFT_SIZE];
 
 double avg_I = 0.0, avg_Q = 0.0;
 double max_I = 0.0, max_Q = 0.0;
@@ -72,11 +75,14 @@ char strary_filename_FFT[64] = {};
 char strary_filename_HRRR[64] = {};
 
 //=============Serial UART===========
-int SerialStatus = -1;
+int flag_Serial_out = 0;
+int handle_Serial = -1;
+int num_Serial_in = 0;
 
-char serial_Data[SIZE_SERIAL_BUFFER] = {0};
-char serial_Msg[SIZE_SERIAL_BUFFER] = {0};
-char serial_Spctm[SIZE_SERIAL_BUFFER] = {0};
+char arySerIn_Data[SIZE_SERIAL_BUFFER] = {0};
+char arySerOut_ADC[SIZE_SERIAL_BUFFER] = {0};
+char arySerOut_Msg[SIZE_SERIAL_BUFFER] = {0};
+char arySerOut_Spctm[SIZE_SERIAL_BUFFER] = {0};
 
 //===============General purpose Functions Declaration====================
 
@@ -85,9 +91,6 @@ void ISR_ADC(int gpio, int level, uint32_t tick);
 // /=================================================================================
 int main(int argc, char *argv[])
 {
-  complex_t I_Signal[FFT_SIZE];
-  complex_t Q_Signal[FFT_SIZE];
-  complex_t Mod_IQ[FFT_SIZE];
 
   // printf("argc=%d,", argc);
   // printf("argv=%s,%s,%s\n", argv[0], argv[1], argv[2]);
@@ -96,7 +99,7 @@ int main(int argc, char *argv[])
   When user execute the program by typing "sudo ./SIL_HBRR 3 77",
   the first argument argv[0] is program 's name "./SIL_HBRR",
   and the second argument argv[1] is "3"
-  and the third argument argv[2] is "77" ,and so on...
+  and the third argument argv[2] is "77"
   */
 
   if (argc == 2)
@@ -110,7 +113,6 @@ int main(int argc, char *argv[])
   index_freq_max = round(3.0 / (ADC_SAMPLE_RATE / FFT_SIZE));
   // index_freq_max = FFT_SIZE / 2; // Nyquist frequency = fs/2, so index_freq_max= 16384
 
-
   // pigpio.h initializing Function
   if (gpioInitialise() < 0)
   {
@@ -123,12 +125,12 @@ int main(int argc, char *argv[])
   }
 
   // pigpio library: Open new Com port, and save its handle variable
-  SerialStatus = serOpen("/dev/ttyAMA1", 115200, 0);
+  handle_Serial = serOpen("/dev/ttyAMA1", 115200, 0);
 
-  if (SerialStatus >= 0)
-    printf("SERIAL open success at handle: %d!\n", SerialStatus);
+  if (handle_Serial >= 0)
+    printf("Serial device open success at handle: %d!\n", handle_Serial);
   else
-    printf("SERIAL open fail with error: %d!\n", SerialStatus); //-24= PI_NO_HANDLE, -72=PI_SER_OPEN_FAILED
+    printf("Serial device open failed with error: %d!\n", handle_Serial); //-24= PI_NO_HANDLE, -72=PI_SER_OPEN_FAILED
 
   // Initialize SPI with CS=0,speed=2MHz (SPI Mode is fixed to Mode1)
   ADS131A0x_setSPI(CS_0, 2000000);
@@ -181,6 +183,14 @@ int main(int argc, char *argv[])
   while (1)
   // while (num_FFT_exec < max_time)
   {
+
+    num_Serial_in = serDataAvailable(handle_Serial);
+    if (num_Serial_in >= 3)
+    {
+      serRead(handle_Serial, arySerIn_Data, 5);
+      printf("Serial input=%s\n", arySerIn_Data);
+      // flag_Serial_out=1;
+    }
     // Perform FFT only if ADC has collected "enough number" of data points (say, 32768 points)
     if (flag_FFT == 1)
     {
@@ -222,11 +232,11 @@ int main(int argc, char *argv[])
       printf("IQ-Demod RR:%u,HR:%u, Motion:%u\n", HRRR_MOD_IQ.RespRate, HRRR_MOD_IQ.HrtRate, isMmotionDetected);
 
       // Serial output RR/HR data
-      sprintf(serial_Data, "@R%u,%u,%u\n", HRRR_MOD_IQ.RespRate, HRRR_MOD_IQ.HrtRate, isMmotionDetected);
-      serWrite(SerialStatus, serial_Data, strlen(serial_Data) + 1);
-      // memset(serial_Data, 0, 40);
+      sprintf(arySerOut_ADC, "@R%u,%u,%u\n", HRRR_MOD_IQ.RespRate, HRRR_MOD_IQ.HrtRate, isMmotionDetected);
+      serWrite(handle_Serial, arySerOut_ADC, strlen(arySerOut_ADC) + 1);
+      // memset(arySerOut_ADC, 0, 40);
 
-      flag_FFT = 2;
+      flag_FFT = 2; // trigger ISR to output FFT spectrum to PC through serial port(TTL to USB)
     }
   }
 
@@ -254,12 +264,12 @@ void ISR_ADC(int gpio, int level, uint32_t tick)
     ADS131A0x_GetADCData(1, aData_ADC);  // Mode1= Real ADC
     Volt_I[countDataAcq] = aData_ADC[0]; // channel 0
     Volt_Q[countDataAcq] = aData_ADC[1]; // channel 1
-
     // Volt_Mod_IQ[countDataAcq] = sqrt(pow(Volt_I[countDataAcq], 2) + pow(Volt_Q[countDataAcq], 2));
 
-    // Here, the IQ complex signal= sqrt(I^2+Q^2)
-    // However, it should be ADC1-avg_1, but the average value avg_1,avg_2 is still unknown at this time
-    // so it lacks the DC offset calibration process
+    // Here, the IQ complex signal= sqrt(I^2+Q^2);
+    // however, it should be ADC1-avg_1 or ADC2-avg_2,
+    // but the average value avg_1 and avg_2 were still unknown at this time,
+    // so it lacks the DC offset calibration process.
     ADC_Mod_IQ = sqrt(pow(Volt_I[countDataAcq], 2) + pow(Volt_Q[countDataAcq], 2));
 
     // Datalog: use fprintf to save data
@@ -271,24 +281,21 @@ void ISR_ADC(int gpio, int level, uint32_t tick)
     */
 
     /*Serial output*/
-    sprintf(serial_Data, "@D%6.3f,%6.3f,%6.3f\n", Volt_I[countDataAcq], Volt_Q[countDataAcq], ADC_Mod_IQ);
-    serWrite(SerialStatus, serial_Data, strlen(serial_Data) + 1);
-    // memset(serial_Data, 0, 40);
-
+    if (flag_Serial_out == 1)
+    {
+      sprintf(arySerOut_ADC, "@D%6.3f,%6.3f,%6.3f\n", Volt_I[countDataAcq], Volt_Q[countDataAcq], ADC_Mod_IQ);
+      serWrite(handle_Serial, arySerOut_ADC, strlen(arySerOut_ADC) + 1);
+      // memset(arySerOut_ADC, 0, 40);
+    }
     countDataAcq++; // increse ADC data count number
 
-    if ((countDataAcq % 500) == 0)
+    /*
+    if ((countDataAcq % 2500) == 0)
     {
-      printf("%2d\n", countDataAcq / 500); // To be replaced by progress bar (*****----- 99%)
+      printf("%2d\n", countDataAcq / 500);
+    }*/
 
-      // Test message serial out
-      /*
-      sprintf(serial_Msg, "@MRaw#%2d\n", countDataAcq / 500);
-      serWrite(SerialStatus, serial_Msg, strlen(serial_Msg) + 1);
-      memset(serial_Msg, 0, 40);
-      */
-    }
-
+    // Complete data acquiring, change flag for FFT calculation
     if (countDataAcq == FFT_SIZE)
     {
       flag_FFT = 1;
@@ -306,13 +313,13 @@ void ISR_ADC(int gpio, int level, uint32_t tick)
       /*
       //METHOD 1: Divide and conquer
       if (index_freq == 0)
-        sprintf(serial_Spctm, "@F0,%6.4f,%f\n", SpctmFreq[index_freq], SpctmValue_Mod_IQ[index_freq]);
+        sprintf(arySerOut_Spctm, "@F0,%6.4f,%f\n", SpctmFreq[index_freq], SpctmValue_Mod_IQ[index_freq]);
       else if (index_freq > 0 && index_freq < index_freq_max - 1)
-        sprintf(serial_Spctm, "@F1,%6.4f,%f\n", SpctmFreq[index_freq], SpctmValue_Mod_IQ[index_freq]);
+        sprintf(arySerOut_Spctm, "@F1,%6.4f,%f\n", SpctmFreq[index_freq], SpctmValue_Mod_IQ[index_freq]);
       else if (index_freq == (index_freq_max - 1))
-        sprintf(serial_Spctm, "@F2,%6.4f,%f\n", SpctmFreq[index_freq], SpctmValue_Mod_IQ[index_freq]);
+        sprintf(arySerOut_Spctm, "@F2,%6.4f,%f\n", SpctmFreq[index_freq], SpctmValue_Mod_IQ[index_freq]);
 
-      serWrite(SerialStatus, serial_Spctm, strlen(serial_Spctm) + 1);
+      serWrite(handle_Serial, arySerOut_Spctm, strlen(arySerOut_Spctm) + 1);
 
 
       index_freq++;
@@ -333,21 +340,21 @@ void ISR_ADC(int gpio, int level, uint32_t tick)
 
         if (index_freq == 0)
         {
-          sprintf(serial_Spctm, "@F0,%6.4f,%f\n", SpctmFreq[index_freq], SpctmValue_Mod_IQ[index_freq]);
-          serWrite(SerialStatus, serial_Spctm, strlen(serial_Spctm) + 1);
-          // memset(serial_Spctm, 0, 40);
+          sprintf(arySerOut_Spctm, "@F0,%6.4f,%f\n", SpctmFreq[index_freq], SpctmValue_Mod_IQ[index_freq]);
+          serWrite(handle_Serial, arySerOut_Spctm, strlen(arySerOut_Spctm) + 1);
+          // memset(arySerOut_Spctm, 0, 40);
         }
         else if (index_freq > 0 && index_freq < index_freq_max - 1)
         {
-          sprintf(serial_Spctm, "@F1,%6.4f,%f\n", SpctmFreq[index_freq], SpctmValue_Mod_IQ[index_freq]);
-          serWrite(SerialStatus, serial_Spctm, strlen(serial_Spctm) + 1);
-          // memset(serial_Spctm, 0, 40);
+          sprintf(arySerOut_Spctm, "@F1,%6.4f,%f\n", SpctmFreq[index_freq], SpctmValue_Mod_IQ[index_freq]);
+          serWrite(handle_Serial, arySerOut_Spctm, strlen(arySerOut_Spctm) + 1);
+          // memset(arySerOut_Spctm, 0, 40);
         }
         else if (index_freq == (index_freq_max - 1))
         {
-          sprintf(serial_Spctm, "@F2,%6.4f,%f\n", SpctmFreq[index_freq], SpctmValue_Mod_IQ[index_freq]);
-          serWrite(SerialStatus, serial_Spctm, strlen(serial_Spctm) + 1);
-          // memset(serial_Spctm, 0, 40);
+          sprintf(arySerOut_Spctm, "@F2,%6.4f,%f\n", SpctmFreq[index_freq], SpctmValue_Mod_IQ[index_freq]);
+          serWrite(handle_Serial, arySerOut_Spctm, strlen(arySerOut_Spctm) + 1);
+          // memset(arySerOut_Spctm, 0, 40);
         }
       }*/
     }
