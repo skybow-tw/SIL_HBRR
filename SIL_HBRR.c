@@ -185,11 +185,37 @@ int main(int argc, char *argv[])
   {
 
     num_Serial_in = serDataAvailable(handle_Serial);
-    if (num_Serial_in >= 3)
+
+    if (num_Serial_in >= 4)
     {
-      serRead(handle_Serial, arySerIn_Data, 5);
-      printf("Serial input=%s\n", arySerIn_Data);
-      // flag_Serial_out=1;
+      // printf("Serial Data available=%d\n", num_Serial_in);
+      serRead(handle_Serial, arySerIn_Data, num_Serial_in);
+
+      // The enter of WINDOWS-10 would produce \r\n=CR(0x0D), LF(0x0A)
+      // therefore, if PC output "S1" and press enter, Linux would receive "S1\r\n", that is 4 char.
+
+      if (arySerIn_Data[0] == 'S')
+      {
+        switch (arySerIn_Data[1])
+        {
+        case '0':
+          flag_Serial_out = 0;
+          break;
+
+        case '1':
+          flag_Serial_out = 1;
+          break;
+
+        default:
+
+          break;
+        }
+      }
+      else
+      {
+        // printf("Serial input=%s\n", arySerIn_Data);
+        printf("Unknown command!\n");
+      }
     }
     // Perform FFT only if ADC has collected "enough number" of data points (say, 32768 points)
     if (flag_FFT == 1)
@@ -232,9 +258,12 @@ int main(int argc, char *argv[])
       printf("IQ-Demod RR:%u,HR:%u, Motion:%u\n", HRRR_MOD_IQ.RespRate, HRRR_MOD_IQ.HrtRate, isMmotionDetected);
 
       // Serial output RR/HR data
-      sprintf(arySerOut_ADC, "@R%u,%u,%u\n", HRRR_MOD_IQ.RespRate, HRRR_MOD_IQ.HrtRate, isMmotionDetected);
-      serWrite(handle_Serial, arySerOut_ADC, strlen(arySerOut_ADC) + 1);
-      // memset(arySerOut_ADC, 0, 40);
+      if (flag_Serial_out == 1)
+      {
+        sprintf(arySerOut_ADC, "@R%u,%u,%u\n", HRRR_MOD_IQ.RespRate, HRRR_MOD_IQ.HrtRate, isMmotionDetected);
+        serWrite(handle_Serial, arySerOut_ADC, strlen(arySerOut_ADC) + 1);
+        // memset(arySerOut_ADC, 0, 40);
+      }
 
       flag_FFT = 2; // trigger ISR to output FFT spectrum to PC through serial port(TTL to USB)
     }
@@ -305,34 +334,34 @@ void ISR_ADC(int gpio, int level, uint32_t tick)
     if (flag_FFT == 2)
     {
 
-      flag_FFT = 0;
       // Serial output FFT spectrum data
-      // NOTE: This would results in an obvious delay of GUI chart displaying of ADC datas output,
-      // the reason is still uncertain, it might be the size of the spectrum magnitude are too large, say, >1,000,000
 
-      /*
-      //METHOD 1: Divide and conquer
+      // METHOD 1: Divide and conquer
       if (index_freq == 0)
-        sprintf(arySerOut_Spctm, "@F0,%6.4f,%f\n", SpctmFreq[index_freq], SpctmValue_Mod_IQ[index_freq]);
-      else if (index_freq > 0 && index_freq < index_freq_max - 1)
-        sprintf(arySerOut_Spctm, "@F1,%6.4f,%f\n", SpctmFreq[index_freq], SpctmValue_Mod_IQ[index_freq]);
-      else if (index_freq == (index_freq_max - 1))
-        sprintf(arySerOut_Spctm, "@F2,%6.4f,%f\n", SpctmFreq[index_freq], SpctmValue_Mod_IQ[index_freq]);
-
-      serWrite(handle_Serial, arySerOut_Spctm, strlen(arySerOut_Spctm) + 1);
-
-
-      index_freq++;
-
-      if (index_freq == index_freq_max)
       {
-        // printf("FFT Spectrum output OK!\n");
+        sprintf(arySerOut_Spctm, "@F0,%6.4f,%f\n", SpctmFreq[index_freq], SpctmValue_Mod_IQ[index_freq]);
+        index_freq++;
+      }
+      else if (index_freq > 0 && index_freq < index_freq_max - 1)
+      {
+        sprintf(arySerOut_Spctm, "@F1,%6.4f,%f\n", SpctmFreq[index_freq], SpctmValue_Mod_IQ[index_freq]);
+        index_freq++;
+      }
+      else if (index_freq == (index_freq_max - 1))
+      {
+        sprintf(arySerOut_Spctm, "@F2,%6.4f,%f\n", SpctmFreq[index_freq], SpctmValue_Mod_IQ[index_freq]);
         flag_FFT = 0;
         index_freq = 0;
-      }*/
+      }
+
+      if (flag_Serial_out == 3)
+        serWrite(handle_Serial, arySerOut_Spctm, strlen(arySerOut_Spctm) + 1);
 
       /*
       //METHOD 2: Too time-consuming
+      // NOTE: This would results in an obvious delay of GUI chart displaying of ADC datas output,
+      // the reason is still uncertain, it might be the size of the spectrum magnitude are too large, say, >1,000,000
+
       for (int index_freq = 0; index_freq < index_freq_max; index_freq++)
       {
         // Output spectrum data to csv file
