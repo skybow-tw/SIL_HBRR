@@ -79,8 +79,19 @@ int flag_Serial_out = 0;
 int handle_Serial = -1;
 int num_Serial_in = 0;
 
+// Serial Device name full path setting
+// NOTE: Add "dtoverlay=miniurt-bt" to the "/boot/config.txt" file while using the UART0 to transfer data,
+//       which would switch the Bluetooth to use the mini-UART, and make UART0 as the Primary UART.
+char *SerialDevName_UART0 = "/dev/ttyAMA0"; // UART0
+
+// NOTE: Add "dtoverlay=uart3" to the "/boot/config.txt" file while using the UART3 to transfer data.
+// Besides, the number "n" of the device name "/dev/ttyAMAn" does not equal to the "UARTn" number,
+// e.g. UART3 is the first newly open UART, so it is named "AMA1"
+char *SerialDevName_UART3 = "/dev/ttyAMA1"; // UART3
+
 char arySerIn_Data[SIZE_SERIAL_BUFFER] = {0};
 char arySerOut_ADC[SIZE_SERIAL_BUFFER] = {0};
+char arySerOut_Pct[SIZE_SERIAL_BUFFER] = {0};
 char arySerOut_Msg[SIZE_SERIAL_BUFFER] = {0};
 char arySerOut_Spctm[SIZE_SERIAL_BUFFER] = {0};
 
@@ -125,7 +136,8 @@ int main(int argc, char *argv[])
   }
 
   // pigpio library: Open new Com port, and save its handle variable
-  handle_Serial = serOpen("/dev/ttyAMA1", 115200, 0);
+  // handle_Serial = serOpen("/dev/ttyAMA1", 115200, 0);
+  handle_Serial = serOpen(SerialDevName_UART0, 115200, 0);
 
   if (handle_Serial >= 0)
     printf("Serial device open success at handle: %d!\n", handle_Serial);
@@ -318,11 +330,13 @@ void ISR_ADC(int gpio, int level, uint32_t tick)
     }
     countDataAcq++; // increse ADC data count number
 
-    /*
-    if ((countDataAcq % 2500) == 0)
+    if ((countDataAcq % 500) == 0 && flag_Serial_out == 1)
     {
-      printf("%2d\n", countDataAcq / 500);
-    }*/
+
+      // printf("@P%d\n", (int)(countDataAcq * 100.0 / 32768));
+      sprintf(arySerOut_Pct, "@P%d\n", (int)(countDataAcq * 100.0 / 32768));
+      serWrite(handle_Serial, arySerOut_Pct, strlen(arySerOut_Pct) + 1);
+    }
 
     // Complete data acquiring, change flag for FFT calculation
     if (countDataAcq == FFT_SIZE)
