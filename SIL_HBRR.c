@@ -324,7 +324,7 @@ void ISR_ADC(int gpio, int level, uint32_t tick)
     /*Serial output*/
     if (flag_Serial_out == 1)
     {
-      sprintf(arySerOut_ADC, "@D%6.3f,%6.3f,%6.3f\n", Volt_I[countDataAcq], Volt_Q[countDataAcq], ADC_Mod_IQ);
+      sprintf(arySerOut_ADC, "@D%4.3f,%4.3f,%4.3f\n", Volt_I[countDataAcq], Volt_Q[countDataAcq], ADC_Mod_IQ);
       serWrite(handle_Serial, arySerOut_ADC, strlen(arySerOut_ADC) + 1);
       // memset(arySerOut_ADC, 0, 40);
     }
