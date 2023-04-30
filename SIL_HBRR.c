@@ -87,7 +87,9 @@ char *SerialDevName_UART0 = "/dev/ttyAMA0"; // UART0
 // NOTE: Add "dtoverlay=uart3" to the "/boot/config.txt" file while using the UART3 to transfer data.
 // Besides, the number "n" of the device name "/dev/ttyAMAn" does not equal to the "UARTn" number,
 // e.g. UART3 is the first newly open UART, so it is named "AMA1"
-char *SerialDevName_UART3 = "/dev/ttyAMA1"; // UART3
+char *SerialDevName_UART3 = "/dev/ttyAMA1"; // UART3, only for RPi4B
+
+uint32_t Serial_BaudRate = 115200;
 
 char arySerIn_Data[SIZE_SERIAL_BUFFER] = {0};
 char arySerOut_ADC[SIZE_SERIAL_BUFFER] = {0};
@@ -137,10 +139,10 @@ int main(int argc, char *argv[])
 
   // pigpio library: Open new Com port, and save its handle variable
   // handle_Serial = serOpen("/dev/ttyAMA1", 115200, 0);
-  handle_Serial = serOpen(SerialDevName_UART0, 115200, 0);
+  handle_Serial = serOpen(SerialDevName_UART0, Serial_BaudRate, 0);
 
   if (handle_Serial >= 0)
-    printf("Serial device open success at handle: %d!\n", handle_Serial);
+    printf("UART open success! DevName=%s,Baud Rate=%d bps!\n", SerialDevName_UART0, Serial_BaudRate);
   else
     printf("Serial device open failed with error: %d!\n", handle_Serial); //-24= PI_NO_HANDLE, -72=PI_SER_OPEN_FAILED
 
@@ -152,7 +154,7 @@ int main(int argc, char *argv[])
 
   ADS131A0x_InitialADC(); // TBD: add fs=500Hz ,Vref=4.0 or 2.442,NCP=0 or 1 as input parameters
   ADS131A0x_Start();
-  printf("Start Data Acquiring!\n ===================\n");
+  printf("Start DAQ!\n ===================\n");
 
   // Enable interruption at GPIO_0
   status_ISR_Register = gpioSetISRFunc(17, FALLING_EDGE, 0, ISR_ADC);
@@ -198,35 +200,51 @@ int main(int argc, char *argv[])
 
     num_Serial_in = serDataAvailable(handle_Serial);
 
+    // This should be replaced by UART Rx buffer interruption to prevent polling
+    // Insurfficient Rx bytes, read it all and drop out
+
+    /*
+    if (num_Serial_in > 0 && num_Serial_in < 4)
+    {
+      printf("Serial Data available=%d\n", num_Serial_in);
+      serRead(handle_Serial, arySerIn_Data, num_Serial_in);
+    }
+    */
+
     if (num_Serial_in >= 4)
     {
-      // printf("Serial Data available=%d\n", num_Serial_in);
-      serRead(handle_Serial, arySerIn_Data, num_Serial_in);
 
-      // The enter of WINDOWS-10 would produce \r\n=CR(0x0D), LF(0x0A)
-      // therefore, if PC output "S1" and press enter, Linux would receive "S1\r\n", that is 4 char.
+      // Read ONLY 4 Bytes
+      serRead(handle_Serial, arySerIn_Data, 4);
 
-      if (arySerIn_Data[0] == 'S')
+      // In Windows_10, press "Enter" would produce "\r\n" ,which are CR(0x0D),and LF(0x0A);
+      // therefore, if PC transmit "S1" and press "Enter" , Linux would receive "S1\r\n", that is 4 bytes.
+      if (arySerIn_Data[3] == '\n')
       {
-        switch (arySerIn_Data[1])
+        if (arySerIn_Data[0] == 'S')
         {
-        case '0':
-          flag_Serial_out = 0;
-          break;
+          switch (arySerIn_Data[1])
+          {
+          case '0':
+            flag_Serial_out = 0;
+            printf("UART stop!\n");
+            break;
 
-        case '1':
-          flag_Serial_out = 1;
-          break;
+          case '1':
+            flag_Serial_out = 1;
+            printf("UART start!\n");
+            break;
 
-        default:
+          default:
 
-          break;
+            break;
+          }
         }
-      }
-      else
-      {
-        // printf("Serial input=%s\n", arySerIn_Data);
-        printf("Unknown command!\n");
+        else
+        {
+          // printf("Serial input=%s\n", arySerIn_Data);
+          printf("Unknown command!\n");
+        }
       }
     }
     // Perform FFT only if ADC has collected "enough number" of data points (say, 32768 points)
@@ -324,7 +342,7 @@ void ISR_ADC(int gpio, int level, uint32_t tick)
     /*Serial output*/
     if (flag_Serial_out == 1)
     {
-      sprintf(arySerOut_ADC, "@D%4.3f,%4.3f,%4.3f\n", Volt_I[countDataAcq], Volt_Q[countDataAcq], ADC_Mod_IQ);
+      sprintf(arySerOut_ADC, "@D%6.3f,%6.3f,%6.3f\n", Volt_I[countDataAcq], Volt_Q[countDataAcq], ADC_Mod_IQ);
       serWrite(handle_Serial, arySerOut_ADC, strlen(arySerOut_ADC) + 1);
       // memset(arySerOut_ADC, 0, 40);
     }
@@ -334,7 +352,7 @@ void ISR_ADC(int gpio, int level, uint32_t tick)
     {
 
       // printf("@P%d\n", (int)(countDataAcq * 100.0 / 32768));
-      sprintf(arySerOut_Pct, "@P%d\n", (int)(countDataAcq * 100.0 / 32768));
+      sprintf(arySerOut_Pct, "@P%d\n", (int)(countDataAcq * 100.0 / FFT_SIZE));
       serWrite(handle_Serial, arySerOut_Pct, strlen(arySerOut_Pct) + 1);
     }
 
@@ -351,13 +369,16 @@ void ISR_ADC(int gpio, int level, uint32_t tick)
       // Serial output FFT spectrum data
 
       // METHOD 1: Divide and conquer
+      // The FFT spectrum serial output for-loop is divided into many single output in every trigger ISR
       if (index_freq == 0)
       {
-        sprintf(arySerOut_Spctm, "@F0,%6.4f,%f\n", SpctmFreq[index_freq], SpctmValue_Mod_IQ[index_freq]);
+        // 1st time, output to ,dt,y0
+        sprintf(arySerOut_Spctm, "@F0,%5.2f,%f,%f\n", SpctmFreq[index_freq], ADC_SAMPLE_RATE / FFT_SIZE, SpctmValue_Mod_IQ[index_freq]);
         index_freq++;
       }
       else if (index_freq > 0 && index_freq < index_freq_max - 1)
       {
+        // 2nd ~ (N-1)th points, only y value is output
         sprintf(arySerOut_Spctm, "@F1,%6.4f,%f\n", SpctmFreq[index_freq], SpctmValue_Mod_IQ[index_freq]);
         index_freq++;
       }
